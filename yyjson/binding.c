@@ -129,29 +129,7 @@ Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     self = (DocumentObject *) type->tp_alloc(type, 0);
 
     if (self != NULL) {
-        char *content = NULL;
-        static char *kwlist[] = {"content", NULL};
-        Py_ssize_t content_len;
-        yyjson_read_err err;
-
-        if(!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
-                                        &content_len)) {
-            return NULL;
-        }
-
-        self->doc = yyjson_read_opts(
-            content,
-            content_len,
-            0,
-            NULL,
-            &err
-        );
-
-        if (!self->doc) {
-            // TODO: Error conversion!
-            PyErr_SetString(PyExc_ValueError, err.msg);
-            return NULL;
-        }
+        self->doc = NULL;
     }
 
     return (PyObject *) self;
@@ -160,6 +138,30 @@ Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
+    char *content = NULL;
+    static char *kwlist[] = {"content", NULL};
+    Py_ssize_t content_len;
+    yyjson_read_err err;
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
+                                    &content_len)) {
+        return -1;
+    }
+
+    self->doc = yyjson_read_opts(
+        content,
+        content_len,
+        0,
+        NULL,
+        &err
+    );
+
+    if (!self->doc) {
+        // TODO: Error conversion!
+        PyErr_SetString(PyExc_ValueError, err.msg);
+        return -1;
+    }
+
     return 0;
 }
 

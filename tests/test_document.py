@@ -1,19 +1,23 @@
 from yyjson import Document
 
+
 def test_document_from_str():
     """Ensure we can parse a document from a str."""
     doc = Document(content='{"hello": "world"}')
     assert doc.as_obj == {'hello': 'world'}
+
 
 def test_document_size():
     """Ensure we can find the size (in bytes) of a parsed document."""
     doc = Document(content='{"hello": "world"}')
     assert doc.size == 18
 
+
 def test_document_count():
     """Ensure we can find the # of elements parsed."""
     doc = Document(content='{"hello": "world"}')
     assert doc.count == 3
+
 
 def test_document_types():
     """Ensure each primitive type can be upcast."""
