@@ -101,8 +101,8 @@ element_to_primitive(yyjson_val *val)
         }
         case YYJSON_TYPE_NONE:
         default:
-            // TODO: PANIC
-            break;
+            PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
+            return NULL;
     }
 }
 
