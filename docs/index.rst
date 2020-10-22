@@ -10,9 +10,7 @@
 Native API
 ==========
 
-.. currentmodule:: yyjson
-
-.. autoclass:: Document
+.. automodule:: yyjson
    :members:
 
 Indices and tables
