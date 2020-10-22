@@ -33,18 +33,20 @@
             
   <div class="toctree-wrapper compound">
 </div>
+<a class="reference external image-reference" href="https://img.shields.io/pypi/l/yyjson.svg?style=flat-square"><img alt="PyPI - License" src="https://img.shields.io/pypi/l/yyjson.svg?style=flat-square" /></a>
+<a class="reference external image-reference" href="https://github.com/TkTech/py_yyjson/workflows/Run%20tests/badge.svg"><img alt="Tests" src="https://github.com/TkTech/py_yyjson/workflows/Run%20tests/badge.svg" /></a>
 <div class="section" id="py-yyjson">
 <h1>py_yyjson<a class="headerlink" href="#py-yyjson" title="Permalink to this headline">¶</a></h1>
 <p>Exploratory python bindings for the <a class="reference external" href="https://github.com/ibireme/yyjson">yyjson</a> project.</p>
 <p>This is a work in progress, and while technically it <em>works</em>, it needs to be
 fleshed out, documentation needs to be added, tests, CI, etc…</p>
 </div>
-<div class="section" id="native-api">
-<h1>Native API<a class="headerlink" href="#native-api" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="module-yyjson">
+<span id="native-api"></span><h1>Native API<a class="headerlink" href="#module-yyjson" title="Permalink to this headline">¶</a></h1>
 <dl class="py class">
 <dt id="yyjson.Document">
 <em class="property">class </em><code class="sig-prename descclassname">yyjson.</code><code class="sig-name descname">Document</code><a class="headerlink" href="#yyjson.Document" title="Permalink to this definition">¶</a></dt>
-<dd><p>yyjson Document</p>
+<dd><p>A parsed JSON Document</p>
 <dl class="py attribute">
 <dt id="yyjson.Document.as_obj">
 <code class="sig-name descname">as_obj</code><a class="headerlink" href="#yyjson.Document.as_obj" title="Permalink to this definition">¶</a></dt>
@@ -63,6 +65,18 @@ fleshed out, documentation needs to be added, tests, CI, etc…</p>
 <dd><p>Size read in bytes.</p>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py function">
+<dt id="yyjson.load">
+<code class="sig-prename descclassname">yyjson.</code><code class="sig-name descname">load</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fp</span></em>, <em class="sig-param"><span class="o">*</span></em>, <em class="sig-param"><span class="n">cls</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">object_hook</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">parse_float</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">parse_int</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">parse_constant</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">object_pairs_hook</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/yyjson.html#load"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#yyjson.load" title="Permalink to this definition">¶</a></dt>
+<dd><p>A stub for yyjson.Document(). All arguments but <cite>fp</cite> are ignored.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt id="yyjson.loads">
+<code class="sig-prename descclassname">yyjson.</code><code class="sig-name descname">loads</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">s</span></em>, <em class="sig-param"><span class="o">*</span></em>, <em class="sig-param"><span class="n">cls</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">object_hook</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">parse_float</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">parse_int</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">parse_constant</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">object_pairs_hook</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/yyjson.html#loads"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#yyjson.loads" title="Permalink to this definition">¶</a></dt>
+<dd><p>A stub for yyjson.Document(). All arguments but <cite>s</cite> are ignored.</p>
 </dd></dl>
 
 </div>
