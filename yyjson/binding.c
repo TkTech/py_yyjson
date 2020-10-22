@@ -143,7 +143,7 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
     Py_ssize_t content_len;
     yyjson_read_err err;
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "s#", kwlist, &content,
                                     &content_len)) {
         return -1;
     }
@@ -168,18 +168,33 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
 static PyObject *
 Document_get_size(DocumentObject *self, void* closure)
 {
+    if (!self->doc) {
+        PyErr_SetString(PyExc_ValueError, "No document has been parsed.");
+        return NULL;
+    }
+
     return PyLong_FromLong(yyjson_doc_get_read_size(self->doc));
 }
 
 static PyObject *
 Document_get_count(DocumentObject *self, void* closure)
 {
+    if (!self->doc) {
+        PyErr_SetString(PyExc_ValueError, "No document has been parsed.");
+        return NULL;
+    }
+
     return PyLong_FromLong(yyjson_doc_get_val_count(self->doc));
 }
 
 static PyObject *
 Document_as_obj(DocumentObject *self, void* closure)
 {
+    if (!self->doc) {
+        PyErr_SetString(PyExc_ValueError, "No document has been parsed.");
+        return NULL;
+    }
+
     yyjson_val *root = yyjson_doc_get_root(self->doc);
     return element_to_primitive(root);
 }
