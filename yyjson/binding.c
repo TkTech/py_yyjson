@@ -130,11 +130,11 @@ Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 
     if (self != NULL) {
         char *content = NULL;
-        static char *kwlist = {"content"};
+        static char *kwlist[] = {"content", NULL};
         Py_ssize_t content_len;
         yyjson_read_err err;
 
-        if(!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", &kwlist, &content,
+        if(!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
                                         &content_len)) {
             return NULL;
         }
