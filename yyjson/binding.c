@@ -4,6 +4,31 @@
 
 static inline PyObject * element_to_primitive(yyjson_val *val);
 
+static void*
+py_malloc(void *ctx, size_t size)
+{
+    return PyMem_Malloc(size);
+}
+
+static void*
+py_realloc(void *ctx, void *ptr, size_t size)
+{
+    return PyMem_Realloc(ptr, size);
+}
+
+static void
+py_free(void *ctx, void *ptr)
+{
+    PyMem_Free(ptr);
+}
+
+static yyjson_alc PyMem_Allocator = {
+    py_malloc,
+    py_realloc,
+    py_free,
+    NULL
+};
+
 
 static inline PyObject *
 element_to_primitive(yyjson_val *val)
@@ -109,7 +134,10 @@ element_to_primitive(yyjson_val *val)
 
 typedef struct {
     PyObject_HEAD
+    // A parsed document.
     yyjson_doc *doc;
+    // A custom memory allocator.
+    yyjson_alc *alc;
 } DocumentObject;
 
 static void
@@ -130,6 +158,7 @@ Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 
     if (self != NULL) {
         self->doc = NULL;
+        self->alc = &PyMem_Allocator;
     }
 
     return (PyObject *) self;
@@ -152,7 +181,7 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
         content,
         content_len,
         0,
-        NULL,
+        self->alc,
         &err
     );
 
