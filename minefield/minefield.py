@@ -27,7 +27,8 @@ for expected_result, files in tests.items():
     for file in files:
         path = f'[{file}]({file})'
         try:
-            Document(str(file))
+            with open(file, 'rb') as fin:
+                Document(fin.read())
         except ValueError:
             if expected_result == 'y':
                 result = Status.SHOULD_HAVE_SUCCEEDED.value
