@@ -211,7 +211,7 @@ static PyMethodDef Document_methods[] = {
 static PyTypeObject DocumentType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "cyyjson.Document",
-    .tp_doc = "yyjson Document",
+    .tp_doc = "A parsed JSON Document",
     .tp_basicsize = sizeof(DocumentObject),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
@@ -225,7 +225,7 @@ static PyTypeObject DocumentType = {
 static PyModuleDef yymodule = {
     PyModuleDef_HEAD_INIT,
     .m_name = "cyyjson",
-    .m_doc = "yyjson Python Bindings.",
+    .m_doc = "Python bindings for the yyjson project.",
     .m_size = -1
 };
 

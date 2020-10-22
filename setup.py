@@ -36,7 +36,14 @@ setup(
         # Dependencies for running tests.
         'test': [
             'pytest'
-        ]
+        ],
+        # Dependencies for package release.
+        'release': [
+            'm2r',
+            'sphinx',
+            'ghp-import',
+            'bumpversion'
+        ],
     },
     ext_modules=[
         Extension(
