@@ -40,6 +40,89 @@
 <p>Exploratory python bindings for the <a class="reference external" href="https://github.com/ibireme/yyjson">yyjson</a> project.</p>
 <p>This is a work in progress, and while technically it <em>works</em>, it needs to be
 fleshed out, documentation needs to be added, tests, CI, etc…</p>
+<p>Find the latest documentation at <a class="reference external" href="https://py_yyjson.tkte.ch">https://py_yyjson.tkte.ch</a>.</p>
+<div class="section" id="installation">
+<h2>🎉 Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
+<p>If binary wheels are available for your platform, you can install from pip
+with no further requirements:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">yyjson</span>
+</pre></div>
+</div>
+<p>Binary wheels are available for the following:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 17%" />
+<col style="width: 17%" />
+<col style="width: 17%" />
+<col style="width: 17%" />
+<col style="width: 17%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"></th>
+<th class="head"><p>py3.5</p></th>
+<th class="head"><p>py3.6</p></th>
+<th class="head"><p>py3.7</p></th>
+<th class="head"><p>py3.8</p></th>
+<th class="head"><p>pypy3</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>OS X (x86_64)</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+</tr>
+<tr class="row-odd"><td><p>Windows (x86_64)</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+</tr>
+<tr class="row-even"><td><p>Linux (x86_64)</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+</tr>
+<tr class="row-odd"><td><p>Linux (ARM64)</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+<td><p>y</p></td>
+</tr>
+</tbody>
+</table>
+<p>If binary wheels are not available for your platform, you’ll need any
+C89-compatible compiler.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="s1">&#39;yyjson&#39;</span> <span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">binary</span> <span class="p">:</span><span class="nb">all</span><span class="p">:</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="development-and-testing">
+<h2>⚗ Development and Testing<a class="headerlink" href="#development-and-testing" title="Permalink to this headline">¶</a></h2>
+<p>To install test requirements, use:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="o">-</span><span class="n">e</span> <span class="s2">&quot;.[test]&quot;</span>
+</pre></div>
+</div>
+<p>To run the tests, just type <code class="docutils literal notranslate"><span class="pre">pytest</span></code>. To prepare for a release or to rebuild
+documentation, you need a few extra dependencies:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="o">-</span><span class="n">e</span> <span class="s2">&quot;.[release]&quot;</span>
+</pre></div>
+</div>
+<p>You can then rebuild the documentation by running <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">html</span></code> within the
+<code class="docutils literal notranslate"><span class="pre">docs/</span></code> directory.</p>
+</div>
+<div class="section" id="benchmarks">
+<h2>📈 Benchmarks<a class="headerlink" href="#benchmarks" title="Permalink to this headline">¶</a></h2>
+<p>py_yyjson compares well against most libraries. The <a class="reference external" href="https://github.com/TkTech/pysimdjson#-benchmarks">full benchmarks</a>
+can be found in its sister project, <a class="reference external" href="https://github.com/TkTech/pysimdjson">pysimdjson</a>.</p>
+</div>
 </div>
 <div class="section" id="module-yyjson">
 <span id="native-api"></span><h1>Native API<a class="headerlink" href="#module-yyjson" title="Permalink to this headline">¶</a></h1>
