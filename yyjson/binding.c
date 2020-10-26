@@ -37,6 +37,42 @@ static yyjson_alc PyMem_Allocator = {
     NULL
 };
 
+/**
+ * Find the yyjson_mut_val at the given pointer.
+ **/
+static yyjson_mut_val*
+mut_val_at_pointer(yyjson_mut_val *start, const char *ptr)
+{
+    // Short circuit for requesting the "current object".
+    if (strncmp(ptr, ".", 2) == 0) return start;
+    return NULL;
+}
+
+/**
+ * Convert a Python object into a mutable yyjson value.
+ **/
+static yyjson_mut_val*
+mut_val_from_obj(yyjson_mut_doc *doc, PyObject *obj)
+{
+    if (PyLong_CheckExact(obj)) {
+
+    } else if (PyFloat_CheckExact(obj)) {
+
+    } else if (obj == Py_True) {
+        return yyjson_mut_true(doc);
+    } else if (obj == Py_False) {
+        return yyjson_mut_false(doc);
+    } else if (PyUnicode_Check(obj)) {
+
+    } else if (obj == Py_None) {
+        return yyjson_mut_null(doc);
+    } else {
+        // !_!
+        return NULL;
+    }
+
+    return NULL;
+}
 
 /**
  * Recursively convert the given value into an equivelent high-level Python
@@ -141,7 +177,10 @@ element_to_primitive(yyjson_val *val)
         }
         case YYJSON_TYPE_NONE:
         default:
-            PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
+            PyErr_SetString(
+                PyExc_TypeError,
+                "Unknown tape type encountered."
+            );
             return NULL;
     }
 }
@@ -332,12 +371,90 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     return obj_result;
 }
 
+/**
+ * Patches a document with the passed object at the point specified by
+ * path, or the root by defualt.
+ */
+static PyObject *
+Document_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
+{
+    static char *kwlist[] = {
+        "obj",
+        "path",
+        NULL
+    };
+    char *path = NULL;
+    Py_ssize_t path_len = 0;
+    PyObject *obj = NULL;
+
+    if(!PyArg_ParseTupleAndKeywords(
+            args,
+            kwds,
+            "O|s#",
+            kwlist,
+            &obj,
+            &path,
+            &path_len
+        )) {
+        return NULL;
+    }
+
+    if (!self->is_mutable) {
+        self->m_doc = yyjson_doc_mut_copy(
+            self->i_doc,
+            self->alc
+        );
+        if (!self->m_doc) {
+            PyErr_SetString(
+                PyExc_RuntimeError,
+                "Unable to convert immutable document to mutable."
+            );
+            return NULL;
+        }
+        self->is_mutable = true;
+    }
+
+    // A document must already have a root, unless we're patching the root,
+    // which ends up just creating it.
+    yyjson_mut_val *target = yyjson_mut_doc_get_root(self->m_doc);
+    if (!target && (path != NULL && strncmp(path, ".", 2) != 0)) {
+        PyErr_SetString(
+            PyExc_ValueError,
+            "Tried to patch a document with no root element."
+        );
+        return NULL;
+    }
+
+    // Find the element we're supposed to be patching.
+    if (path != NULL) {
+        // This will set a Python error if something occured, so just
+        // return for the raise.
+        target = mut_val_at_pointer(target, path);
+        if (!target) return NULL;
+    }
+
+    yyjson_mut_val *patch = mut_val_from_obj(self->m_doc, obj);
+
+    // If we're here and still have no target, it's because we're building
+    // the root. Since this is so common, shortcut it.
+    if (!target) {
+        yyjson_mut_doc_set_root(self->m_doc, patch);
+        Py_RETURN_NONE;
+    }
+
+    return NULL;
+}
 
 static PyMethodDef Document_methods[] = {
     {"dumps",
         (PyCFunction)(void(*)(void))Document_dumps,
         METH_VARARGS | METH_KEYWORDS,
         "Dump the document to a string."
+    },
+    {"patch",
+        (PyCFunction)(void(*)(void))Document_patch,
+        METH_VARARGS | METH_KEYWORDS,
+        "Patch the document at a given point."
     },
     {NULL} /* Sentinel */
 };

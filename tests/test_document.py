@@ -40,3 +40,19 @@ def test_document_dumps():
         '    "hello": "world"\n'
         '}'
     )
+
+
+def test_document_patch():
+    doc = Document()
+
+    # Sets the root of the document since none
+    # yet exists.
+    doc.patch({
+        'hello': 'world'
+    })
+
+    doc = Document('[5]')
+    # Replace the entire matching array.
+    doc.patch([0, 1, 2], '.[]')
+    # Flatten and append to the array.
+    doc.patch([3, 4], '.[@]')
