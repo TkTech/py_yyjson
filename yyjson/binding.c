@@ -54,24 +54,85 @@ mut_val_at_pointer(yyjson_mut_val *start, const char *ptr)
 static yyjson_mut_val*
 mut_val_from_obj(yyjson_mut_doc *doc, PyObject *obj)
 {
-    if (PyLong_CheckExact(obj)) {
-
-    } else if (PyFloat_CheckExact(obj)) {
-
-    } else if (obj == Py_True) {
+    // Lots of room for improvement here.
+    if (obj == Py_True) {
         return yyjson_mut_true(doc);
     } else if (obj == Py_False) {
         return yyjson_mut_false(doc);
-    } else if (PyUnicode_Check(obj)) {
-
     } else if (obj == Py_None) {
         return yyjson_mut_null(doc);
+    } else if (PyLong_CheckExact(obj)) {
+        // We need an "unquoted string" type, we could just call
+        // PyLong_Type.tp_str(obj) and return that, instead we have to do
+        // overflow checks.
+        //
+        // Note this doesn't deal with CPython's compiled for 128bit
+        // long longs. Avoid using ob_size and ob_digits, which are not
+        // populated on pypy.
+        int overflow;
+        long long u_val = PyLong_AsLongLongAndOverflow(obj, &overflow);
+        if (u_val == -1) {
+            if (PyErr_Occurred() != NULL) { return NULL; }
+            else if (overflow == -1) {
+                PyErr_SetString(
+                    PyExc_OverflowError,
+                    "Tried to serialize a number which exceeds the"
+                    " limits."
+                );
+                return NULL;
+            }
+            else if (overflow == 1) {
+                unsigned long long s_val = PyLong_AsUnsignedLongLong(obj);
+                if (s_val == (unsigned long long)-1 &&
+                        PyErr_Occurred() != NULL) {
+                    return NULL;
+                }
+                return yyjson_mut_uint(doc, s_val);
+            }
+        }
+        return yyjson_mut_int(doc, u_val);
+    } else if (PyFloat_CheckExact(obj)) {
+        return yyjson_mut_real(doc, PyFloat_AS_DOUBLE(obj));
+    } else if (PyUnicode_Check(obj)) {
+        Py_ssize_t size;
+        const char *payload = PyUnicode_AsUTF8AndSize(obj, &size);
+        if (payload == NULL) { return NULL; }
+        return yyjson_mut_strncpy(doc, payload, size);
+    } else if (PyDict_Check(obj)) {
+        PyObject *key, *value;
+        Py_ssize_t pos = 0;
+        yyjson_mut_val *yy_dict = yyjson_mut_obj(doc);
+        yyjson_mut_val *yy_key, *yy_value;
+
+        while (PyDict_Next(obj, &pos, &key, &value)) {
+            yy_key = mut_val_from_obj(doc, key);
+            if (!yy_key) return NULL;
+            yy_value = mut_val_from_obj(doc, value);
+            if (!yy_value) return NULL;
+            yyjson_mut_obj_add(yy_dict, yy_key, yy_value);
+        }
+
+        return yy_dict;
+    } else if (PyList_Check(obj)) {
+        Py_ssize_t length = PyList_GET_SIZE(obj);
+        yyjson_mut_val *yy_list = yyjson_mut_arr(doc);
+        yyjson_mut_val *yy_val;
+
+        for (Py_ssize_t i = 0; i < length; i++) {
+            yy_val = mut_val_from_obj(doc, PyList_GET_ITEM(obj, i));
+            if (!yy_val) return NULL;
+            yyjson_mut_arr_append(yy_list, yy_val);
+        }
+
+        return yy_list;
     } else {
-        // !_!
+        // Here's where we'd hook in a default serializer.
+        PyErr_SetString(
+            PyExc_ValueError,
+            "Tried to serialize an unknown type."
+        );
         return NULL;
     }
-
-    return NULL;
 }
 
 /**
@@ -239,8 +300,14 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
     Py_ssize_t content_len;
     yyjson_read_err err;
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
-                                    &content_len)) {
+    if(!PyArg_ParseTupleAndKeywords(
+            args,
+            kwds,
+            "|s#",
+            kwlist,
+            &content,
+            &content_len
+        )) {
         return -1;
     }
 
@@ -412,6 +479,7 @@ Document_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
             return NULL;
         }
         self->is_mutable = true;
+        yyjson_doc_free(self->i_doc);
     }
 
     // A document must already have a root, unless we're patching the root,
@@ -433,7 +501,9 @@ Document_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
         if (!target) return NULL;
     }
 
+    // If patch returns NULL, it should have set its own error.
     yyjson_mut_val *patch = mut_val_from_obj(self->m_doc, obj);
+    if (!patch) { return NULL; }
 
     // If we're here and still have no target, it's because we're building
     // the root. Since this is so common, shortcut it.
