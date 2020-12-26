@@ -1,0 +1,3 @@
+include yyjson/binding.c
+include yyjson/yyjson.h
+include yyjson/yyjson.c
