@@ -21,12 +21,11 @@ with no further requirements:
 
 Binary wheels are available for the following:
 
-|                  | py3.5 | py3.6 | py3.7 | py3.8 | pypy3 |
-| ---------------- | ----- | ----- | ----- | ----- | ----- |
-| OS X (x86_64)    | y     | y     | y     | y     | y     |
-| Windows (x86_64) | y     | y     | y     | y     | y     |
-| Linux (x86_64)   | y     | y     | y     | y     | y     |
-| Linux (ARM64)    | y     | y     | y     | y     | y     |
+|                  | py3.5 | py3.6 | py3.7 | py3.8 | py3.9 | pypy3 |
+| ---------------- | ----- | ----- | ----- | ----- | ----- | ----- |
+| OS X (x86_64)    | y     | y     | y     | y     | y     | y     |
+| Windows (x86_64) | y     | y     | y     | y     | y     | y     |
+| Linux (x86_64)   | y     | y     | y     | y     | y     | y     |
 
 If binary wheels are not available for your platform, you'll need any
 C89-compatible compiler.
