@@ -1,3 +1,5 @@
+import pytest
+
 from yyjson import Document
 
 
@@ -40,3 +42,24 @@ def test_document_dumps():
         '    "hello": "world"\n'
         '}'
     )
+
+
+def test_document_get_pointer():
+    doc = Document('''{
+        "size" : 3,
+        "users" : [
+            {"id": 1, "name": "Harry"},
+            {"id": 2, "name": "Ron"},
+            {"id": 3, "name": "Hermione"}
+        ]}'''
+    )
+
+    assert doc.get_pointer('/size') == 3
+    assert doc.get_pointer('/users/0') == {
+        'id': 1,
+        'name': 'Harry'
+    }
+    assert doc.get_pointer('/users/1/name') == 'Ron'
+
+    with pytest.raises(ValueError):
+        doc.get_pointer('bob')

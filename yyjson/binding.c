@@ -332,12 +332,65 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     return obj_result;
 }
 
+/**
+ * Dump a Document to a string.
+ **/
+static PyObject *
+Document_get_pointer(DocumentObject *self, PyObject *args)
+{
+    char *pointer = NULL;
+    Py_ssize_t pointer_len;
+
+    if (!PyArg_ParseTuple(
+            args,
+            "s#",
+            &pointer,
+            &pointer_len
+        )) {
+        return NULL;
+    }
+
+    if (self->m_doc) {
+        yyjson_mut_val *result = yyjson_mut_doc_get_pointer(
+            self->m_doc,
+            pointer
+        );
+
+        if (!result) {
+            PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
+            return NULL;
+        }
+
+        return NULL;
+    } else if (self->i_doc) {
+        yyjson_val *result = yyjson_doc_get_pointer(
+            self->i_doc,
+            pointer
+        );
+
+        if (!result) {
+            PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
+            return NULL;
+        }
+
+        return element_to_primitive(result);
+    } else {
+        PyErr_SetString(PyExc_ValueError, "Document not initialized!");
+        return NULL;
+    }
+}
+
 
 static PyMethodDef Document_methods[] = {
     {"dumps",
         (PyCFunction)(void(*)(void))Document_dumps,
         METH_VARARGS | METH_KEYWORDS,
         "Dump the document to a string."
+    },
+    {"get_pointer",
+        (PyCFunction)(void(*)(void))Document_get_pointer,
+        METH_VARARGS,
+        "Get the element at the matching JSON Pointer (RFC 6901)."
     },
     {NULL} /* Sentinel */
 };

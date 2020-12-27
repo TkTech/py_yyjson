@@ -28,10 +28,10 @@
  *============================================================================*/
 
 #define YYJSON_VERSION_MAJOR  0
-#define YYJSON_VERSION_MINOR  1
+#define YYJSON_VERSION_MINOR  2
 #define YYJSON_VERSION_PATCH  0
-#define YYJSON_VERSION_HEX    0x000100
-#define YYJSON_VERSION_STRING "0.1.0"
+#define YYJSON_VERSION_HEX    0x000200
+#define YYJSON_VERSION_STRING "0.2.0"
 
 
 
@@ -49,16 +49,15 @@
 #ifndef YYJSON_DISABLE_WRITER
 #endif
 
-/* Define 1 to use libc's API `strtod` to read floating-point number
+/* Define 1 to use libc's `strtod()` to read floating-point number
    instead of the custom floating-point number reader in yyjson.
-   This may reduce binary size, but slow down floating-point reading speed.
-   This may also invalidate the YYJSON_READ_FASTFP option. */
+   This may reduce binary size, but slow down floating-point reading speed. */
 #ifndef YYJSON_DISABLE_FP_READER
 #endif
 
-/* Define 1 to use libc's API `sprintf` to write floating-point number
+/* Define 1 to use libc's `sprintf()` to write floating-point number
    instead of the custom floating-point number writer in yyjson.
-   This may reduce binary size, but slow down floating-point writing speed. */
+   This may reduce binary size, but slow down floating-point writing speed,. */
 #ifndef YYJSON_DISABLE_FP_WRITER
 #endif
 
@@ -256,7 +255,10 @@
 #   else
 #       error cannot find 32-bit integer type
 #   endif
-#   if defined(__GNUC__) || defined(__clang__)
+#   if defined(__INT64_TYPE__) && defined(__UINT64_TYPE__)
+        typedef __INT64_TYPE__  int64_t;
+        typedef __UINT64_TYPE__ uint64_t;
+#   elif defined(__GNUC__) || defined(__clang__)
         __extension__ typedef long long             int64_t;
         __extension__ typedef unsigned long long    uint64_t;
 #   elif defined(_LONG_LONG) || defined(__MWERKS__) || defined(_CRAYC) || \
@@ -385,7 +387,7 @@ typedef struct yyjson_alc {
  a general-purpose allocator, and should only be used to read or write
  single JSON document.
  
- Code example (parse JSON with stack memory only):
+ Sample code (parse JSON with stack memory only):
  
      char buf[65536];
      yyjson_alc alc;
@@ -442,24 +444,19 @@ static const yyjson_read_flag YYJSON_READ_NOFLAG                = 0 << 0;
     For example: "[1,2]" should be "[1,2]\0\0\0\0", length should be 5. */
 static const yyjson_read_flag YYJSON_READ_INSITU                = 1 << 0;
 
-/** Read floating-point number with a fast method.
-    This option can greatly increase the reading speed of long floating-point
-    numbers, but may get 0-2 ULP error for each number. */
-static const yyjson_read_flag YYJSON_READ_FASTFP                = 1 << 1;
-
 /** Stop when done instead of issues an error if there's additional content
     after a JSON document. This option may used to parse small pieces of JSON 
     in larger data, such as NDJSON. */
-static const yyjson_read_flag YYJSON_READ_STOP_WHEN_DONE        = 1 << 2;
+static const yyjson_read_flag YYJSON_READ_STOP_WHEN_DONE        = 1 << 1;
 
 /** Allow single trailing comma at the end of an object or array. */
-static const yyjson_read_flag YYJSON_READ_ALLOW_TRAILING_COMMAS = 1 << 3;
+static const yyjson_read_flag YYJSON_READ_ALLOW_TRAILING_COMMAS = 1 << 2;
 
 /** Allow C-style single line and multiple line comments.*/
-static const yyjson_read_flag YYJSON_READ_ALLOW_COMMENTS        = 1 << 4;
+static const yyjson_read_flag YYJSON_READ_ALLOW_COMMENTS        = 1 << 3;
 
 /** Allow nan/inf number or literal, such as 1e999, NaN, Inf, -Infinity. */
-static const yyjson_read_flag YYJSON_READ_ALLOW_INF_AND_NAN     = 1 << 5;
+static const yyjson_read_flag YYJSON_READ_ALLOW_INF_AND_NAN     = 1 << 4;
 
 
 
@@ -581,7 +578,9 @@ yyjson_api_inline yyjson_doc *yyjson_read(const char *dat,
 /**
  Returns the size of maximum memory usage to read a JSON data.
  You may use this value to avoid malloc() or calloc() call inside the reader
- to get better performance, or read multiple JSON, for example:
+ to get better performance, or read multiple JSON.
+ 
+ Sample code:
  
      char *dat1, *dat2, *dat3; // JSON data
      size_t len1, len2, len3; // JSON length
@@ -996,7 +995,9 @@ yyjson_api_inline yyjson_val *yyjson_arr_get_last(yyjson_val *arr);
  *============================================================================*/
 
 /**
- A JSON array iterator, code example:
+ A JSON array iterator.
+ 
+ Sample code:
  
      yyjson_val *val;
      yyjson_arr_iter iter;
@@ -1018,7 +1019,9 @@ yyjson_api_inline bool yyjson_arr_iter_has_next(yyjson_arr_iter *iter);
 yyjson_api_inline yyjson_val *yyjson_arr_iter_next(yyjson_arr_iter *iter);
 
 /**
- Macro for iterating over an array, code example:
+ Macro for iterating over an array.
+ 
+ Sample code:
  
      size_t idx, max;
      yyjson_val *val;
@@ -1061,7 +1064,9 @@ yyjson_api_inline yyjson_val *yyjson_obj_getn(yyjson_val *obj, const char *key,
  *============================================================================*/
 
 /**
- A JSON object iterator, code example:
+ A JSON object iterator.
+ 
+ Sample code:
  
      yyjson_val *key, *val;
      yyjson_obj_iter iter;
@@ -1087,7 +1092,9 @@ yyjson_api_inline yyjson_val *yyjson_obj_iter_next(yyjson_obj_iter *iter);
 yyjson_api_inline yyjson_val *yyjson_obj_iter_get_val(yyjson_val *key);
 
 /**
- Macro for iterating over an object, code example:
+ Macro for iterating over an object.
+ 
+ Sample code:
  
      size_t idx, max;
      yyjson_val *key, *val;
@@ -1126,12 +1133,14 @@ yyjson_api void yyjson_mut_doc_free(yyjson_mut_doc *doc);
 yyjson_api yyjson_mut_doc *yyjson_mut_doc_new(yyjson_alc *alc);
 
 /** Copies and returns a new mutable document from input, returns NULL on error.
+    This makes a `deep-copy` on the immutable document.
     If allocator is NULL, the default allocator will be used. */
 yyjson_api yyjson_mut_doc *yyjson_doc_mut_copy(yyjson_doc *doc,
                                                yyjson_alc *alc);
 
 /** Copies and returns a new mutable value from input, returns NULL on error.
-    The memory was managed by document. */
+    This makes a `deep-copy` on the immutable value.
+    The memory was managed by mutable document. */
 yyjson_api yyjson_mut_val *yyjson_val_mut_copy(yyjson_mut_doc *doc,
                                                yyjson_val *val);
 
@@ -1318,7 +1327,9 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_arr_get_last(yyjson_mut_val *arr);
  *============================================================================*/
 
 /**
- A mutable JSON array iterator, code example:
+ A mutable JSON array iterator.
+ 
+ Sample code:
  
      yyjson_mut_val *val;
      yyjson_mut_arr_iter iter;
@@ -1351,7 +1362,9 @@ yyjson_api_inline
 yyjson_mut_val *yyjson_mut_arr_iter_remove(yyjson_mut_arr_iter *iter);
 
 /**
- Macro for iterating over an array, code example:
+ Macro for iterating over an array.
+ 
+ Sample code:
  
      size_t idx, max;
      yyjson_mut_val *val;
@@ -1612,7 +1625,9 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_getn(yyjson_mut_val *obj,
  *============================================================================*/
 
 /**
- A mutable JSON object iterator, code example:
+ A mutable JSON object iterator.
+ 
+ Sample code:
  
      yyjson_mut_val *key, *val;
      yyjson_mut_obj_iter iter;
@@ -1651,7 +1666,9 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_iter_remove(
                                                     yyjson_mut_obj_iter *iter);
 
 /**
- Macro for iterating over an object, code example:
+ Macro for iterating over an object.
+ 
+ Sample code:
  
      size_t idx, max;
      yyjson_val *key, *val;
@@ -1816,6 +1833,35 @@ yyjson_api_inline bool yyjson_mut_obj_remove_str(yyjson_mut_val *obj,
 yyjson_api_inline bool yyjson_mut_obj_remove_strn(yyjson_mut_val *obj,
                                                   const char *key, size_t len);
 
+
+
+/*==============================================================================
+ * JSON Pointer API
+ *============================================================================*/
+
+/** Get a JSON value with JSON Pointer: https://tools.ietf.org/html/rfc6901
+    For example: "/users/0/uid".
+    Returns NULL if there's no matched value. */
+yyjson_api_inline yyjson_val *yyjson_get_pointer(yyjson_val *val,
+                                                 const char *pointer);
+
+/** Get a JSON value with JSON Pointer: https://tools.ietf.org/html/rfc6901
+    For example: "/users/0/uid".
+    Returns NULL if there's no matched value. */
+yyjson_api_inline yyjson_val *yyjson_doc_get_pointer(yyjson_doc *doc,
+                                                     const char *pointer);
+
+/** Get a JSON value with JSON Pointer: https://tools.ietf.org/html/rfc6901
+    For example: "/users/0/uid".
+    Returns NULL if there's no matched value. */
+yyjson_api_inline yyjson_mut_val *yyjson_mut_get_pointer(yyjson_mut_val *val,
+                                                         const char *pointer);
+
+/** Get a JSON value with JSON Pointer: https://tools.ietf.org/html/rfc6901
+    For example: "/users/0/uid".
+    Returns NULL if there's no matched value. */
+yyjson_api_inline yyjson_mut_val *yyjson_mut_doc_get_pointer(
+                                    yyjson_mut_doc *doc, const char *pointer);
 
 
 
@@ -3750,6 +3796,52 @@ yyjson_api_inline bool yyjson_mut_obj_remove_strn(yyjson_mut_val *obj,
         return true;
     }
     return false;
+}
+
+
+
+/*==============================================================================
+ * JSON Pointer API (Private)
+ *============================================================================*/
+
+yyjson_api yyjson_val *unsafe_yyjson_get_pointer(yyjson_val *val,
+                                                 const char *ptr,
+                                                 size_t len);
+
+yyjson_api yyjson_mut_val *unsafe_yyjson_mut_get_pointer(yyjson_mut_val *val,
+                                                         const char *ptr,
+                                                         size_t len);
+
+yyjson_api_inline yyjson_val *yyjson_get_pointer(yyjson_val *val,
+                                                 const char *ptr) {
+    if (val && ptr) {
+        if (*ptr == '\0') return val;
+        if (*ptr != '/') return NULL;
+        return unsafe_yyjson_get_pointer(val, ptr, strlen(ptr));
+    }
+    return NULL;
+}
+
+yyjson_api_inline yyjson_val *yyjson_doc_get_pointer(yyjson_doc *doc,
+                                                     const char *ptr) {
+    if (doc) return yyjson_get_pointer(doc->root, ptr);
+    return NULL;
+}
+
+yyjson_api_inline yyjson_mut_val *yyjson_mut_get_pointer(yyjson_mut_val *val,
+                                                         const char *ptr) {
+    if (val && ptr) {
+        if (*ptr == '\0') return val;
+        if (*ptr != '/') return NULL;
+        return unsafe_yyjson_mut_get_pointer(val, ptr, strlen(ptr));
+    }
+    return NULL;
+}
+
+yyjson_api_inline yyjson_mut_val *yyjson_mut_doc_get_pointer(
+    yyjson_mut_doc *doc, const char *ptr) {
+    if (doc) return yyjson_mut_get_pointer(doc->root, ptr);
+    return NULL;
 }
 
 
