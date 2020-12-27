@@ -39,6 +39,99 @@ static yyjson_alc PyMem_Allocator = {
 
 
 /**
+ * Convert a Python object into a mutable yyjson value.
+ *
+ * :param doc: The document which the newly created value will be associated
+ *             with. This does not mean that it is added to the document tree,
+ *             only that its memory is managed together.
+ * :param obj: The Python object to be converted.
+ * :returns: A newly created yyjson_mut_val pointer.
+ **/
+static yyjson_mut_val*
+mut_val_from_obj(yyjson_mut_doc *doc, PyObject *obj)
+{
+    // Lots of room for improvement here.
+    if (obj == Py_True) {
+        return yyjson_mut_true(doc);
+    } else if (obj == Py_False) {
+        return yyjson_mut_false(doc);
+    } else if (obj == Py_None) {
+        return yyjson_mut_null(doc);
+    } else if (PyLong_CheckExact(obj)) {
+        // We need an "unquoted string" type, we could just call
+        // PyLong_Type.tp_str(obj) and return that, instead we have to do
+        // overflow checks.
+        //
+        // Note this doesn't deal with CPython's compiled for 128bit
+        // long longs. Avoid using ob_size and ob_digits, which are not
+        // populated on pypy.
+        int overflow;
+        long long u_val = PyLong_AsLongLongAndOverflow(obj, &overflow);
+        if (u_val == -1) {
+            if (PyErr_Occurred() != NULL) { return NULL; }
+            else if (overflow == -1) {
+                PyErr_SetString(
+                    PyExc_OverflowError,
+                    "Tried to serialize a number which exceeds the"
+                    " limits."
+                );
+                return NULL;
+            }
+            else if (overflow == 1) {
+                unsigned long long s_val = PyLong_AsUnsignedLongLong(obj);
+                if (s_val == (unsigned long long)-1 &&
+                        PyErr_Occurred() != NULL) {
+                    return NULL;
+                }
+                return yyjson_mut_uint(doc, s_val);
+            }
+        }
+        return yyjson_mut_int(doc, u_val);
+    } else if (PyFloat_CheckExact(obj)) {
+        return yyjson_mut_real(doc, PyFloat_AS_DOUBLE(obj));
+    } else if (PyUnicode_Check(obj)) {
+        Py_ssize_t size;
+        const char *payload = PyUnicode_AsUTF8AndSize(obj, &size);
+        if (payload == NULL) { return NULL; }
+        return yyjson_mut_strncpy(doc, payload, size);
+    } else if (PyDict_Check(obj)) {
+        PyObject *key, *value;
+        Py_ssize_t pos = 0;
+        yyjson_mut_val *yy_dict = yyjson_mut_obj(doc);
+        yyjson_mut_val *yy_key, *yy_value;
+
+        while (PyDict_Next(obj, &pos, &key, &value)) {
+            yy_key = mut_val_from_obj(doc, key);
+            if (!yy_key) return NULL;
+            yy_value = mut_val_from_obj(doc, value);
+            if (!yy_value) return NULL;
+            yyjson_mut_obj_add(yy_dict, yy_key, yy_value);
+        }
+
+        return yy_dict;
+    } else if (PyList_Check(obj)) {
+        Py_ssize_t length = PyList_GET_SIZE(obj);
+        yyjson_mut_val *yy_list = yyjson_mut_arr(doc);
+        yyjson_mut_val *yy_val;
+
+        for (Py_ssize_t i = 0; i < length; i++) {
+            yy_val = mut_val_from_obj(doc, PyList_GET_ITEM(obj, i));
+            if (!yy_val) return NULL;
+            yyjson_mut_arr_append(yy_list, yy_val);
+        }
+
+        return yy_list;
+    } else {
+        // Here's where we'd hook in a default serializer.
+        PyErr_SetString(
+            PyExc_ValueError,
+            "Tried to serialize an unknown type."
+        );
+        return NULL;
+    }
+}
+
+/**
  * Recursively convert the given value into an equivelent high-level Python
  * object.
  *
@@ -141,6 +234,120 @@ element_to_primitive(yyjson_val *val)
         }
         case YYJSON_TYPE_NONE:
         default:
+            PyErr_SetString(
+                PyExc_TypeError,
+                "Unknown tape type encountered."
+            );
+            return NULL;
+    }
+}
+
+
+/**
+ * Recursively convert the given value into an equivelent high-level Python
+ * object.
+ *
+ * :param val: A pointer to the value to be converted.
+ * :return: A pointer to a new PyObject representing the value.
+ **/
+static inline PyObject *
+mut_element_to_primitive(yyjson_mut_val *val)
+{
+    yyjson_type type = yyjson_mut_get_type(val);
+
+    switch (type) {
+        case YYJSON_TYPE_NULL:
+            Py_RETURN_NONE;
+        case YYJSON_TYPE_BOOL:
+            if (yyjson_mut_get_subtype(val) == YYJSON_SUBTYPE_TRUE) {
+                Py_RETURN_TRUE;
+            } else {
+                Py_RETURN_FALSE;
+            }
+        case YYJSON_TYPE_NUM:
+        {
+            switch (yyjson_mut_get_subtype(val)) {
+                case YYJSON_SUBTYPE_UINT:
+                    return PyLong_FromUnsignedLongLong(
+                        yyjson_mut_get_uint(val)
+                    );
+                case YYJSON_SUBTYPE_SINT:
+                    return PyLong_FromLongLong(yyjson_mut_get_sint(val));
+                case YYJSON_SUBTYPE_REAL:
+                    return PyFloat_FromDouble(yyjson_mut_get_real(val));
+            }
+        }
+        case YYJSON_TYPE_STR:
+        {
+            size_t str_len = yyjson_mut_get_len(val);
+            const char *str = yyjson_mut_get_str(val);
+
+            return PyUnicode_FromStringAndSize(str, str_len);
+        }
+        case YYJSON_TYPE_ARR:
+        {
+            PyObject *arr = PyList_New(yyjson_mut_arr_size(val));
+            if (!arr) {
+                return NULL;
+            }
+
+            yyjson_mut_val *obj_val;
+            PyObject *py_val;
+
+            yyjson_mut_arr_iter iter;
+            yyjson_mut_arr_iter_init(val, &iter);
+
+            size_t idx = 0;
+            while ((obj_val = yyjson_mut_arr_iter_next(&iter))) {
+                py_val = mut_element_to_primitive(obj_val);
+                if (!py_val) {
+                    return NULL;
+                }
+
+                PyList_SET_ITEM(arr, idx++, py_val);
+            }
+
+            return arr;
+        }
+        case YYJSON_TYPE_OBJ:
+        {
+            PyObject *dict = PyDict_New();
+            if (!dict) {
+                return NULL;
+            }
+
+            yyjson_mut_val *obj_key, *obj_val;
+            PyObject *py_key, *py_val;
+
+            yyjson_mut_obj_iter iter;
+            yyjson_mut_obj_iter_init(val, &iter);
+
+            while ((obj_key = yyjson_mut_obj_iter_next(&iter))) {
+                obj_val = yyjson_mut_obj_iter_get_val(obj_key);
+
+                py_key = mut_element_to_primitive(obj_key);
+                py_val = mut_element_to_primitive(obj_val);
+
+                if (!py_key) {
+                    return NULL;
+                }
+
+                if (!py_val) {
+                    Py_DECREF(py_key);
+                    return NULL;
+                }
+
+                if(PyDict_SetItem(dict, py_key, py_val) == -1) {
+                    return NULL;
+                }
+
+                Py_DECREF(py_key);
+                Py_DECREF(py_val);
+            }
+            return dict;
+        }
+        case YYJSON_TYPE_NONE:
+        default:
             PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
             return NULL;
     }
@@ -200,8 +407,14 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
     Py_ssize_t content_len;
     yyjson_read_err err;
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
-                                    &content_len)) {
+    if(!PyArg_ParseTupleAndKeywords(
+            args,
+            kwds,
+            "|s#",
+            kwlist,
+            &content,
+            &content_len
+        )) {
         return -1;
     }
 
@@ -361,7 +574,7 @@ Document_get_pointer(DocumentObject *self, PyObject *args)
             return NULL;
         }
 
-        return NULL;
+        return mut_element_to_primitive(result);
     } else if (self->i_doc) {
         yyjson_val *result = yyjson_doc_get_pointer(
             self->i_doc,

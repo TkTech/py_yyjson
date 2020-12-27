@@ -51,8 +51,8 @@ def test_document_get_pointer():
             {"id": 1, "name": "Harry"},
             {"id": 2, "name": "Ron"},
             {"id": 3, "name": "Hermione"}
-        ]}'''
-    )
+        ]}
+    ''')
 
     assert doc.get_pointer('/size') == 3
     assert doc.get_pointer('/users/0') == {
@@ -63,3 +63,6 @@ def test_document_get_pointer():
 
     with pytest.raises(ValueError):
         doc.get_pointer('bob')
+
+    doc = Document()
+    doc.get_pointer("")
