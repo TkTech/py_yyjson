@@ -2,17 +2,18 @@
 #include <Python.h>
 #include "yyjson.h"
 
-static inline PyObject * element_to_primitive(yyjson_val *val);
+static inline PyObject *
+element_to_primitive(yyjson_val *val);
 
 /** wrapper to use PyMem_Malloc with yyjson's allocator. **/
-static void*
+static void *
 py_malloc(void *ctx, size_t size)
 {
     return PyMem_Malloc(size);
 }
 
 /** wrapper to use PyMem_Realloc with yyjson's allocator. **/
-static void*
+static void *
 py_realloc(void *ctx, void *ptr, size_t size)
 {
     return PyMem_Realloc(ptr, size);
@@ -30,13 +31,7 @@ py_free(void *ctx, void *ptr)
  *
  * Use this as the argument to any method that takes an `alc` parameter.
  */
-static yyjson_alc PyMem_Allocator = {
-    py_malloc,
-    py_realloc,
-    py_free,
-    NULL
-};
-
+static yyjson_alc PyMem_Allocator = {py_malloc, py_realloc, py_free, NULL};
 
 /**
  * Convert a Python object into a mutable yyjson value.
@@ -47,17 +42,20 @@ static yyjson_alc PyMem_Allocator = {
  * :param obj: The Python object to be converted.
  * :returns: A newly created yyjson_mut_val pointer.
  **/
-static yyjson_mut_val*
+static yyjson_mut_val *
 mut_val_from_obj(yyjson_mut_doc *doc, PyObject *obj)
 {
     // Lots of room for improvement here.
     if (obj == Py_True) {
         return yyjson_mut_true(doc);
-    } else if (obj == Py_False) {
+    }
+    else if (obj == Py_False) {
         return yyjson_mut_false(doc);
-    } else if (obj == Py_None) {
+    }
+    else if (obj == Py_None) {
         return yyjson_mut_null(doc);
-    } else if (PyLong_CheckExact(obj)) {
+    }
+    else if (PyLong_CheckExact(obj)) {
         // We need an "unquoted string" type, we could just call
         // PyLong_Type.tp_str(obj) and return that, instead we have to do
         // overflow checks.
@@ -68,33 +66,38 @@ mut_val_from_obj(yyjson_mut_doc *doc, PyObject *obj)
         int overflow;
         long long u_val = PyLong_AsLongLongAndOverflow(obj, &overflow);
         if (u_val == -1) {
-            if (PyErr_Occurred() != NULL) { return NULL; }
+            if (PyErr_Occurred() != NULL) {
+                return NULL;
+            }
             else if (overflow == -1) {
-                PyErr_SetString(
-                    PyExc_OverflowError,
-                    "Tried to serialize a number which exceeds the"
-                    " limits."
-                );
+                PyErr_SetString(PyExc_OverflowError,
+                                "Tried to serialize a number which exceeds the"
+                                " limits.");
                 return NULL;
             }
             else if (overflow == 1) {
                 unsigned long long s_val = PyLong_AsUnsignedLongLong(obj);
                 if (s_val == (unsigned long long)-1 &&
-                        PyErr_Occurred() != NULL) {
+                    PyErr_Occurred() != NULL) {
                     return NULL;
                 }
                 return yyjson_mut_uint(doc, s_val);
             }
         }
         return yyjson_mut_int(doc, u_val);
-    } else if (PyFloat_CheckExact(obj)) {
+    }
+    else if (PyFloat_CheckExact(obj)) {
         return yyjson_mut_real(doc, PyFloat_AS_DOUBLE(obj));
-    } else if (PyUnicode_Check(obj)) {
+    }
+    else if (PyUnicode_Check(obj)) {
         Py_ssize_t size;
         const char *payload = PyUnicode_AsUTF8AndSize(obj, &size);
-        if (payload == NULL) { return NULL; }
+        if (payload == NULL) {
+            return NULL;
+        }
         return yyjson_mut_strncpy(doc, payload, size);
-    } else if (PyDict_Check(obj)) {
+    }
+    else if (PyDict_Check(obj)) {
         PyObject *key, *value;
         Py_ssize_t pos = 0;
         yyjson_mut_val *yy_dict = yyjson_mut_obj(doc);
@@ -102,31 +105,34 @@ mut_val_from_obj(yyjson_mut_doc *doc, PyObject *obj)
 
         while (PyDict_Next(obj, &pos, &key, &value)) {
             yy_key = mut_val_from_obj(doc, key);
-            if (!yy_key) return NULL;
+            if (!yy_key)
+                return NULL;
             yy_value = mut_val_from_obj(doc, value);
-            if (!yy_value) return NULL;
+            if (!yy_value)
+                return NULL;
             yyjson_mut_obj_add(yy_dict, yy_key, yy_value);
         }
 
         return yy_dict;
-    } else if (PyList_Check(obj)) {
+    }
+    else if (PyList_Check(obj)) {
         Py_ssize_t length = PyList_GET_SIZE(obj);
         yyjson_mut_val *yy_list = yyjson_mut_arr(doc);
         yyjson_mut_val *yy_val;
 
         for (Py_ssize_t i = 0; i < length; i++) {
             yy_val = mut_val_from_obj(doc, PyList_GET_ITEM(obj, i));
-            if (!yy_val) return NULL;
+            if (!yy_val)
+                return NULL;
             yyjson_mut_arr_append(yy_list, yy_val);
         }
 
         return yy_list;
-    } else {
+    }
+    else {
         // Here's where we'd hook in a default serializer.
-        PyErr_SetString(
-            PyExc_ValueError,
-            "Tried to serialize an unknown type."
-        );
+        PyErr_SetString(PyExc_ValueError,
+                        "Tried to serialize an unknown type.");
         return NULL;
     }
 }
@@ -149,11 +155,11 @@ element_to_primitive(yyjson_val *val)
         case YYJSON_TYPE_BOOL:
             if (yyjson_get_subtype(val) == YYJSON_SUBTYPE_TRUE) {
                 Py_RETURN_TRUE;
-            } else {
+            }
+            else {
                 Py_RETURN_FALSE;
             }
-        case YYJSON_TYPE_NUM:
-        {
+        case YYJSON_TYPE_NUM: {
             switch (yyjson_get_subtype(val)) {
                 case YYJSON_SUBTYPE_UINT:
                     return PyLong_FromUnsignedLongLong(yyjson_get_uint(val));
@@ -163,15 +169,13 @@ element_to_primitive(yyjson_val *val)
                     return PyFloat_FromDouble(yyjson_get_real(val));
             }
         }
-        case YYJSON_TYPE_STR:
-        {
+        case YYJSON_TYPE_STR: {
             size_t str_len = yyjson_get_len(val);
             const char *str = yyjson_get_str(val);
 
             return PyUnicode_FromStringAndSize(str, str_len);
         }
-        case YYJSON_TYPE_ARR:
-        {
+        case YYJSON_TYPE_ARR: {
             PyObject *arr = PyList_New(yyjson_arr_size(val));
             if (!arr) {
                 return NULL;
@@ -195,8 +199,7 @@ element_to_primitive(yyjson_val *val)
 
             return arr;
         }
-        case YYJSON_TYPE_OBJ:
-        {
+        case YYJSON_TYPE_OBJ: {
             PyObject *dict = PyDict_New();
             if (!dict) {
                 return NULL;
@@ -223,7 +226,7 @@ element_to_primitive(yyjson_val *val)
                     return NULL;
                 }
 
-                if(PyDict_SetItem(dict, py_key, py_val) == -1) {
+                if (PyDict_SetItem(dict, py_key, py_val) == -1) {
                     return NULL;
                 }
 
@@ -234,14 +237,10 @@ element_to_primitive(yyjson_val *val)
         }
         case YYJSON_TYPE_NONE:
         default:
-            PyErr_SetString(
-                PyExc_TypeError,
-                "Unknown tape type encountered."
-            );
+            PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
             return NULL;
     }
 }
-
 
 /**
  * Recursively convert the given value into an equivelent high-level Python
@@ -261,31 +260,28 @@ mut_element_to_primitive(yyjson_mut_val *val)
         case YYJSON_TYPE_BOOL:
             if (yyjson_mut_get_subtype(val) == YYJSON_SUBTYPE_TRUE) {
                 Py_RETURN_TRUE;
-            } else {
+            }
+            else {
                 Py_RETURN_FALSE;
             }
-        case YYJSON_TYPE_NUM:
-        {
+        case YYJSON_TYPE_NUM: {
             switch (yyjson_mut_get_subtype(val)) {
                 case YYJSON_SUBTYPE_UINT:
                     return PyLong_FromUnsignedLongLong(
-                        yyjson_mut_get_uint(val)
-                    );
+                        yyjson_mut_get_uint(val));
                 case YYJSON_SUBTYPE_SINT:
                     return PyLong_FromLongLong(yyjson_mut_get_sint(val));
                 case YYJSON_SUBTYPE_REAL:
                     return PyFloat_FromDouble(yyjson_mut_get_real(val));
             }
         }
-        case YYJSON_TYPE_STR:
-        {
+        case YYJSON_TYPE_STR: {
             size_t str_len = yyjson_mut_get_len(val);
             const char *str = yyjson_mut_get_str(val);
 
             return PyUnicode_FromStringAndSize(str, str_len);
         }
-        case YYJSON_TYPE_ARR:
-        {
+        case YYJSON_TYPE_ARR: {
             PyObject *arr = PyList_New(yyjson_mut_arr_size(val));
             if (!arr) {
                 return NULL;
@@ -309,8 +305,7 @@ mut_element_to_primitive(yyjson_mut_val *val)
 
             return arr;
         }
-        case YYJSON_TYPE_OBJ:
-        {
+        case YYJSON_TYPE_OBJ: {
             PyObject *dict = PyDict_New();
             if (!dict) {
                 return NULL;
@@ -337,7 +332,7 @@ mut_element_to_primitive(yyjson_mut_val *val)
                     return NULL;
                 }
 
-                if(PyDict_SetItem(dict, py_key, py_val) == -1) {
+                if (PyDict_SetItem(dict, py_key, py_val) == -1) {
                     return NULL;
                 }
 
@@ -353,7 +348,6 @@ mut_element_to_primitive(yyjson_mut_val *val)
     }
 }
 
-
 /**
  * Represents a yyjson document.
  *
@@ -362,8 +356,8 @@ mut_element_to_primitive(yyjson_mut_val *val)
  */
 typedef struct {
     PyObject_HEAD
-    /** An immutable parsed document. */
-    yyjson_doc *i_doc;
+        /** An immutable parsed document. */
+        yyjson_doc *i_doc;
     /** A mutable document, either copied from i_doc on modification, or
      * created from scratch.
      **/
@@ -377,17 +371,19 @@ typedef struct {
 static void
 Document_dealloc(DocumentObject *self)
 {
-    if (self->i_doc != NULL) yyjson_doc_free(self->i_doc);
-    if (self->m_doc != NULL) yyjson_mut_doc_free(self->m_doc);
+    if (self->i_doc != NULL)
+        yyjson_doc_free(self->i_doc);
+    if (self->m_doc != NULL)
+        yyjson_mut_doc_free(self->m_doc);
 
-    Py_TYPE(self)->tp_free((PyObject *) self);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
 Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     DocumentObject *self;
-    self = (DocumentObject *) type->tp_alloc(type, 0);
+    self = (DocumentObject *)type->tp_alloc(type, 0);
 
     if (self != NULL) {
         self->i_doc = NULL;
@@ -396,7 +392,7 @@ Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         self->alc = &PyMem_Allocator;
     }
 
-    return (PyObject *) self;
+    return (PyObject *)self;
 }
 
 static int
@@ -407,33 +403,23 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
     Py_ssize_t content_len;
     yyjson_read_err err;
 
-    if(!PyArg_ParseTupleAndKeywords(
-            args,
-            kwds,
-            "|s#",
-            kwlist,
-            &content,
-            &content_len
-        )) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
+                                     &content_len)) {
         return -1;
     }
 
     if (content) {
         /* We're loading an existing document. */
-        self->i_doc = yyjson_read_opts(
-            content,
-            content_len,
-            0,
-            self->alc,
-            &err
-        );
+        self->i_doc =
+            yyjson_read_opts(content, content_len, 0, self->alc, &err);
 
         if (!self->i_doc) {
             // TODO: Error conversion!
             PyErr_SetString(PyExc_ValueError, err.msg);
             return -1;
         }
-    } else {
+    }
+    else {
         /* We're creating a new document from scratch. */
         self->m_doc = yyjson_mut_doc_new(self->alc);
         if (!self->m_doc) {
@@ -450,24 +436,21 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
  * Recursively convert the document into Python objects.
  */
 static PyObject *
-Document_as_obj(DocumentObject *self, void* closure)
+Document_as_obj(DocumentObject *self, void *closure)
 {
     if (self->i_doc) {
         yyjson_val *root = yyjson_doc_get_root(self->i_doc);
         return element_to_primitive(root);
-    } else {
+    }
+    else {
         PyErr_SetString(PyExc_ValueError, "Document not initialized!");
         return NULL;
     }
 }
 
 static PyGetSetDef Document_members[] = {
-    {"as_obj",
-        (getter)Document_as_obj,
-        NULL,
-        "The document as a native Python object.",
-        NULL
-    },
+    {"as_obj", (getter)Document_as_obj, NULL,
+     "The document as a native Python object.", NULL},
     {NULL} /* Sentinel */
 };
 
@@ -477,36 +460,28 @@ static PyGetSetDef Document_members[] = {
 static PyObject *
 Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {
-        "pretty_print",
-        "escape_unicode",
-        "escape_slashes",
-        "allow_infinity",
-        NULL
-    };
+    static char *kwlist[] = {"pretty_print", "escape_unicode",
+                             "escape_slashes", "allow_infinity", NULL};
     bool f_pretty_print = false;
     bool f_escape_unicode = false;
     bool f_escape_slashes = false;
     bool f_allow_infinity = false;
     yyjson_write_flag w_flag = 0;
 
-    if(!PyArg_ParseTupleAndKeywords(
-            args,
-            kwds,
-            "|$pppp",
-            kwlist,
-            &f_pretty_print,
-            &f_escape_unicode,
-            &f_escape_slashes,
-            &f_allow_infinity
-        )) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|$pppp", kwlist,
+                                     &f_pretty_print, &f_escape_unicode,
+                                     &f_escape_slashes, &f_allow_infinity)) {
         return NULL;
     }
 
-    if (f_pretty_print) w_flag |= YYJSON_WRITE_PRETTY;
-    if (f_escape_unicode) w_flag |= YYJSON_WRITE_ESCAPE_UNICODE;
-    if (f_escape_slashes) w_flag |= YYJSON_WRITE_ESCAPE_SLASHES;
-    if (f_allow_infinity) w_flag |= YYJSON_WRITE_ALLOW_INF_AND_NAN;
+    if (f_pretty_print)
+        w_flag |= YYJSON_WRITE_PRETTY;
+    if (f_escape_unicode)
+        w_flag |= YYJSON_WRITE_ESCAPE_UNICODE;
+    if (f_escape_slashes)
+        w_flag |= YYJSON_WRITE_ESCAPE_SLASHES;
+    if (f_allow_infinity)
+        w_flag |= YYJSON_WRITE_ALLOW_INF_AND_NAN;
 
     char *result = NULL;
     size_t w_len;
@@ -514,22 +489,14 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     PyObject *obj_result = NULL;
 
     if (self->m_doc) {
-        result = yyjson_mut_write_opts(
-            self->m_doc,
-            w_flag,
-            self->alc,
-            &w_len,
-            &w_err
-        );
-    } else if (self->i_doc) {
-        result = yyjson_write_opts(
-            self->i_doc,
-            w_flag,
-            self->alc,
-            &w_len,
-            &w_err
-        );
-    } else {
+        result = yyjson_mut_write_opts(self->m_doc, w_flag, self->alc, &w_len,
+                                       &w_err);
+    }
+    else if (self->i_doc) {
+        result =
+            yyjson_write_opts(self->i_doc, w_flag, self->alc, &w_len, &w_err);
+    }
+    else {
         PyErr_SetString(PyExc_ValueError, "Document not initialized!");
         return NULL;
     }
@@ -554,20 +521,13 @@ Document_get_pointer(DocumentObject *self, PyObject *args)
     char *pointer = NULL;
     Py_ssize_t pointer_len;
 
-    if (!PyArg_ParseTuple(
-            args,
-            "s#",
-            &pointer,
-            &pointer_len
-        )) {
+    if (!PyArg_ParseTuple(args, "s#", &pointer, &pointer_len)) {
         return NULL;
     }
 
     if (self->m_doc) {
-        yyjson_mut_val *result = yyjson_mut_doc_get_pointer(
-            self->m_doc,
-            pointer
-        );
+        yyjson_mut_val *result =
+            yyjson_mut_doc_get_pointer(self->m_doc, pointer);
 
         if (!result) {
             PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
@@ -575,11 +535,9 @@ Document_get_pointer(DocumentObject *self, PyObject *args)
         }
 
         return mut_element_to_primitive(result);
-    } else if (self->i_doc) {
-        yyjson_val *result = yyjson_doc_get_pointer(
-            self->i_doc,
-            pointer
-        );
+    }
+    else if (self->i_doc) {
+        yyjson_val *result = yyjson_doc_get_pointer(self->i_doc, pointer);
 
         if (!result) {
             PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
@@ -587,48 +545,36 @@ Document_get_pointer(DocumentObject *self, PyObject *args)
         }
 
         return element_to_primitive(result);
-    } else {
+    }
+    else {
         PyErr_SetString(PyExc_ValueError, "Document not initialized!");
         return NULL;
     }
 }
 
-
 static PyMethodDef Document_methods[] = {
-    {"dumps",
-        (PyCFunction)(void(*)(void))Document_dumps,
-        METH_VARARGS | METH_KEYWORDS,
-        "Dump the document to a string."
-    },
-    {"get_pointer",
-        (PyCFunction)(void(*)(void))Document_get_pointer,
-        METH_VARARGS,
-        "Get the element at the matching JSON Pointer (RFC 6901)."
-    },
+    {"dumps", (PyCFunction)(void (*)(void))Document_dumps,
+     METH_VARARGS | METH_KEYWORDS, "Dump the document to a string."},
+    {"get_pointer", (PyCFunction)(void (*)(void))Document_get_pointer,
+     METH_VARARGS, "Get the element at the matching JSON Pointer (RFC 6901)."},
     {NULL} /* Sentinel */
 };
 
-
 static PyTypeObject DocumentType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "cyyjson.Document",
+    PyVarObject_HEAD_INIT(NULL, 0).tp_name = "cyyjson.Document",
     .tp_doc = "A JSON Document.",
     .tp_basicsize = sizeof(DocumentObject),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_new = Document_new,
-    .tp_init = (initproc) Document_init,
-    .tp_dealloc = (destructor) Document_dealloc,
+    .tp_init = (initproc)Document_init,
+    .tp_dealloc = (destructor)Document_dealloc,
     .tp_getset = Document_members,
-    .tp_methods = Document_methods
-};
+    .tp_methods = Document_methods};
 
 static PyModuleDef yymodule = {
-    PyModuleDef_HEAD_INIT,
-    .m_name = "cyyjson",
-    .m_doc = "Python bindings for the yyjson project.",
-    .m_size = -1
-};
+    PyModuleDef_HEAD_INIT, .m_name = "cyyjson",
+    .m_doc = "Python bindings for the yyjson project.", .m_size = -1};
 
 PyMODINIT_FUNC
 PyInit_cyyjson(void)
