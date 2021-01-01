@@ -2,26 +2,29 @@
 #include <Python.h>
 #include "yyjson.h"
 
+PyMODINIT_FUNC
+PyInit_cyyjson(void);
+
 static inline PyObject *
 element_to_primitive(yyjson_val *val);
 
 /** wrapper to use PyMem_Malloc with yyjson's allocator. **/
 static void *
-py_malloc(void *ctx, size_t size)
+py_malloc(void *Py_UNUSED(ctx), size_t size)
 {
     return PyMem_Malloc(size);
 }
 
 /** wrapper to use PyMem_Realloc with yyjson's allocator. **/
 static void *
-py_realloc(void *ctx, void *ptr, size_t size)
+py_realloc(void *Py_UNUSED(ctx), void *ptr, size_t size)
 {
     return PyMem_Realloc(ptr, size);
 }
 
 /** wrapper to use PyMem_Free with yyjson's allocator. **/
 static void
-py_free(void *ctx, void *ptr)
+py_free(void *Py_UNUSED(ctx), void *ptr)
 {
     PyMem_Free(ptr);
 }
@@ -369,7 +372,7 @@ typedef struct {
 } DocumentObject;
 
 static void
-Document_dealloc(DocumentObject *self)
+PyDocument_dealloc(DocumentObject *self)
 {
     if (self->i_doc != NULL)
         yyjson_doc_free(self->i_doc);
@@ -380,7 +383,8 @@ Document_dealloc(DocumentObject *self)
 }
 
 static PyObject *
-Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+PyDocument_new(PyTypeObject *type, PyObject *Py_UNUSED(args),
+             PyObject *Py_UNUSED(kwds))
 {
     DocumentObject *self;
     self = (DocumentObject *)type->tp_alloc(type, 0);
@@ -396,7 +400,7 @@ Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 }
 
 static int
-Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
+PyDocument_init(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
     char *content = NULL;
     static char *kwlist[] = {"content", NULL};
@@ -436,9 +440,13 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
  * Recursively convert the document into Python objects.
  */
 static PyObject *
-Document_as_obj(DocumentObject *self, void *closure)
+PyDocument_as_obj(DocumentObject *self, void *Py_UNUSED(closure))
 {
-    if (self->i_doc) {
+    if (self->m_doc) {
+        yyjson_mut_val *root = yyjson_mut_doc_get_root(self->m_doc);
+        return mut_element_to_primitive(root);
+    }
+    else if (self->i_doc) {
         yyjson_val *root = yyjson_doc_get_root(self->i_doc);
         return element_to_primitive(root);
     }
@@ -448,8 +456,8 @@ Document_as_obj(DocumentObject *self, void *closure)
     }
 }
 
-static PyGetSetDef Document_members[] = {
-    {"as_obj", (getter)Document_as_obj, NULL,
+static PyGetSetDef PyDocument_members[] = {
+    {"as_obj", (getter)PyDocument_as_obj, NULL,
      "The document as a native Python object.", NULL},
     {NULL} /* Sentinel */
 };
@@ -458,7 +466,7 @@ static PyGetSetDef Document_members[] = {
  * Dump a Document to a string.
  **/
 static PyObject *
-Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
+PyDocument_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {"pretty_print", "escape_unicode",
                              "escape_slashes", "allow_infinity", NULL};
@@ -516,7 +524,7 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
  * Dump a Document to a string.
  **/
 static PyObject *
-Document_get_pointer(DocumentObject *self, PyObject *args)
+PyDocument_get_pointer(DocumentObject *self, PyObject *args)
 {
     char *pointer = NULL;
     Py_ssize_t pointer_len;
@@ -552,11 +560,61 @@ Document_get_pointer(DocumentObject *self, PyObject *args)
     }
 }
 
-static PyMethodDef Document_methods[] = {
-    {"dumps", (PyCFunction)(void (*)(void))Document_dumps,
+
+/**
+ * An implementation of JSON patch.
+ *
+ * Implements the `add`, `remove`, `replace`, `copy`, `move` and `test`
+ * operations.
+ *
+ * When replacing elements, it's important for memory usage concerns to know
+ * that yyjson cannot currently free memory. Any element you replace will
+ * continue to exist until the document is destroyed.
+ */
+static PyObject *
+PyDocument_patch(DocumentObject *self, PyObject *args)
+{
+    PyObject *obj = NULL;
+
+    if (!PyArg_ParseTuple(args, "O", &obj)) {
+        return NULL;
+    }
+
+    if (self->i_doc) {
+        // If we've already loadedd an immutable document, copy it to a mutable
+        // variant and erase the old one.
+        self->m_doc = yyjson_doc_mut_copy(self->i_doc, self->alc);
+        self->is_mutable = true;
+        yyjson_doc_free(self->i_doc);
+    } else if (!self->m_doc) {
+        // Otherwise, create a new mutable document.
+        self->m_doc = yyjson_mut_doc_new(self->alc);
+    }
+
+    if (!self->m_doc) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    yyjson_mut_val *val = mut_val_from_obj(self->m_doc, obj);
+    if (!val) {
+        return NULL;
+    }
+
+    if (yyjson_mut_doc_patch(self->m_doc, val)) {
+        Py_RETURN_TRUE;
+    } else {
+        Py_RETURN_FALSE;
+    }
+}
+
+static PyMethodDef PyDocument_methods[] = {
+    {"dumps", (PyCFunction)(void (*)(void))PyDocument_dumps,
      METH_VARARGS | METH_KEYWORDS, "Dump the document to a string."},
-    {"get_pointer", (PyCFunction)(void (*)(void))Document_get_pointer,
+    {"get_pointer", (PyCFunction)(void (*)(void))PyDocument_get_pointer,
      METH_VARARGS, "Get the element at the matching JSON Pointer (RFC 6901)."},
+    {"patch", (PyCFunction)(void (*)(void))PyDocument_patch,
+     METH_VARARGS, "Apply a single JSON Patch (RFC 6902) step."},
     {NULL} /* Sentinel */
 };
 
@@ -566,15 +624,18 @@ static PyTypeObject DocumentType = {
     .tp_basicsize = sizeof(DocumentObject),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_new = Document_new,
-    .tp_init = (initproc)Document_init,
-    .tp_dealloc = (destructor)Document_dealloc,
-    .tp_getset = Document_members,
-    .tp_methods = Document_methods};
+    .tp_new = PyDocument_new,
+    .tp_init = (initproc)PyDocument_init,
+    .tp_dealloc = (destructor)PyDocument_dealloc,
+    .tp_getset = PyDocument_members,
+    .tp_methods = PyDocument_methods};
 
 static PyModuleDef yymodule = {
-    PyModuleDef_HEAD_INIT, .m_name = "cyyjson",
-    .m_doc = "Python bindings for the yyjson project.", .m_size = -1};
+    PyModuleDef_HEAD_INIT,
+    .m_name = "cyyjson",
+    .m_doc = "Python bindings for the yyjson project.",
+    .m_size = -1
+};
 
 PyMODINIT_FUNC
 PyInit_cyyjson(void)
@@ -591,8 +652,8 @@ PyInit_cyyjson(void)
 
     Py_INCREF(&DocumentType);
     if (PyModule_AddObject(m, "Document", (PyObject *)&DocumentType) < 0) {
-        Py_DECREF(&DocumentType);
-        Py_DECREF(m);
+        Py_XDECREF(&DocumentType);
+        Py_XDECREF(m);
         return NULL;
     }
 

@@ -65,4 +65,44 @@ def test_document_get_pointer():
         doc.get_pointer('bob')
 
     doc = Document()
-    doc.get_pointer("")
+    # doc.get_pointer("")
+
+
+def test_document_json_patch():
+    doc = Document()
+    assert doc.patch([
+        {'op': 'add', 'path': '', 'value': {'hello': 'world'}},
+        {'op': 'replace', 'path': '/hello', 'value': 'bob'},
+        {'op': 'copy', 'path': '/test', 'from': '/hello'},
+        {'op': 'remove', 'path': '/hello'},
+        {'op': 'move', 'from': '/test', 'path': '/moved'}
+    ])
+
+    assert doc.as_obj == {
+        'moved': 'bob'
+    }
+
+    doc = Document()
+    assert doc.patch([
+        {'op': 'add', 'path': '', 'value': [0, 1, 2]},
+        {'op': 'remove', 'path': '/0'},
+    ])
+
+    assert doc.as_obj == [1, 2]
+
+    # Try removing an invalid index.
+    assert doc.patch([
+        {'op': 'remove', 'path': '/3'}
+    ]) is False
+
+    # Try inserting at an invalid index.
+    assert doc.patch([
+        {'op': 'add', 'path': '/3', 'value': {'hello': 'world'}}
+    ]) is False
+
+    # ... and a valid index.
+    assert doc.patch([
+        {'op': 'add', 'path': '/2', 'value': {'hello': 'world'}}
+    ]) is True
+
+    assert doc.as_obj == [1, 2, {'hello': 'world'}]
