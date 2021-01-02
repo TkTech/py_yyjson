@@ -1442,12 +1442,6 @@ yyjson_api bool unsafe_yyjson_mut_doc_patch(yyjson_mut_doc *doc,
         // Short-circuit to handle root assignment.
         if (*path_str == '\0') {
             if (op_hash == PATCH_OP_ADD || op_hash == PATCH_OP_REPLACE) {
-                if (op_hash == PATCH_OP_ADD && doc->root) {
-                    // ADD should not be used on the root unless the
-                    // document is blank. Use REPLACE instead.
-                    return false;
-                }
-
                 yyjson_mut_val *value = yyjson_mut_obj_get(patch, "value");
                 if (!value) return false;
                 yyjson_mut_doc_set_root(doc, value);

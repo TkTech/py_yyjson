@@ -609,11 +609,12 @@ PyDocument_patch(DocumentObject *self, PyObject *args)
     }
 
     if (self->i_doc) {
-        // If we've already loadedd an immutable document, copy it to a mutable
+        // If we've already loaded an immutable document, copy it to a mutable
         // variant and erase the old one.
         self->m_doc = yyjson_doc_mut_copy(self->i_doc, self->alc);
         self->is_mutable = true;
         yyjson_doc_free(self->i_doc);
+        self->i_doc = NULL;
     } else if (!self->m_doc) {
         // Otherwise, create a new mutable document.
         self->m_doc = yyjson_mut_doc_new(self->alc);
