@@ -402,17 +402,45 @@ PyDocument_new(PyTypeObject *type, PyObject *Py_UNUSED(args),
 static int
 PyDocument_init(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
-    char *content = NULL;
     static char *kwlist[] = {"content", NULL};
+
+    char *content = NULL;
     Py_ssize_t content_len;
     yyjson_read_err err;
+    PyObject *source = NULL;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
-                                     &content_len)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", kwlist, &source)) {
         return -1;
     }
 
-    if (content) {
+    if (source && PyBytes_Check(source)) {
+        if (PyBytes_AsStringAndSize(source, &content, &content_len) == -1) {
+            return -1;
+        }
+    }
+    else if (source && PyUnicode_Check(source)) {
+        content = (char *)PyUnicode_AsUTF8AndSize(source, &content_len);
+        if (!content) {
+            return -1;
+        }
+    }
+
+    if (!content && source) {
+        self->m_doc = yyjson_mut_doc_new(self->alc);
+        if (!self->m_doc) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        self->is_mutable = true;
+
+        yyjson_mut_val *val = mut_val_from_obj(self->m_doc, source);
+        if (!val) {
+            return -1;
+        }
+
+        yyjson_mut_doc_set_root(self->m_doc, val);
+    }
+    else if (content) {
         /* We're loading an existing document. */
         self->i_doc =
             yyjson_read_opts(content, content_len, 0, self->alc, &err);
