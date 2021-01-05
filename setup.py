@@ -41,6 +41,11 @@ setup(
             'ghp-import',
             'bumpversion'
         ],
+        # Dependencies for running benchmarks.
+        'benchmark': [
+            'pytest-benchmark',
+            'jsonpatch'
+        ]
     },
     ext_modules=[
         Extension(
