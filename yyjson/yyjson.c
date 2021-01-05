@@ -1529,8 +1529,14 @@ yyjson_api bool unsafe_yyjson_mut_doc_patch(yyjson_mut_doc *doc,
                         value
                     );
                 } else {
-                    if (!yyjson_mut_arr_insert(last_container, value, idx)) {
-                        break;
+                    if (op_hash == PATCH_OP_REPLACE) {
+                        if (!yyjson_mut_arr_replace(last_container, idx, value)) {
+                            break;
+                        }
+                    } else {
+                        if (!yyjson_mut_arr_insert(last_container, value, idx)) {
+                            break;
+                        }
                     }
                 }
                 if (key) free(key);
