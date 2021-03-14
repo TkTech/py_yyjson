@@ -38,6 +38,7 @@ setup(
         'release': [
             'm2r',
             'sphinx',
+            'furo',
             'ghp-import',
             'bumpversion'
         ],
