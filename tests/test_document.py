@@ -63,3 +63,10 @@ def test_document_get_pointer():
 
     with pytest.raises(ValueError):
         doc.get_pointer('bob')
+
+
+def test_document_is_mutable():
+    doc = Document('''{"hello": "world"}''')
+    assert doc.is_mutable is False
+    doc = Document()
+    assert doc.is_mutable is True

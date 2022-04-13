@@ -248,11 +248,28 @@ Document_as_obj(DocumentObject *self, void* closure)
     }
 }
 
+/**
+ * Exposes if the current Document is a mutable copy.
+ */
+static PyObject *
+Document_is_mutable(DocumentObject *self, void* closure)
+{
+    if (self->is_mutable) Py_RETURN_TRUE;
+    Py_RETURN_FALSE;
+}
+
 static PyGetSetDef Document_members[] = {
     {"as_obj",
         (getter)Document_as_obj,
         NULL,
         "The document as a native Python object.",
+        NULL
+    },
+    {"is_mutable",
+        (getter)Document_is_mutable,
+        NULL,
+        "True if this Document is mutable. If you attempt to modify an immutable Document, it will be copied into a"
+        " mutable Document.",
         NULL
     },
     {NULL} /* Sentinel */
