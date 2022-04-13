@@ -1,6 +1,8 @@
+import math
+
 import pytest
 
-from yyjson import Document
+from yyjson import Document, WriterFlags, ReaderFlags
 
 
 def test_document_from_str():
@@ -41,11 +43,30 @@ def test_document_dumps():
 
     # Minified by default.
     assert doc.dumps() == '{"hello":"world"}'
-    assert doc.dumps(pretty_print=True) == (
+    assert doc.dumps(flags=WriterFlags.PRETTY) == (
         '{\n'
         '    "hello": "world"\n'
         '}'
     )
+
+def test_document_dumps_nan_and_inf():
+    """
+    Ensure we can dump documents with Infinity and NaN.
+    """
+    # In standards mode, NaN & Inf should be a hard error.
+    with pytest.raises(ValueError):
+        doc = Document('{"hello": NaN}')
+
+    with pytest.raises(ValueError):
+        doc = Document('{"hello": Infinity}')
+
+    doc = Document('''{
+        "hello": NaN,
+        "world": Infinity
+    }''', flags=ReaderFlags.ALLOW_INF_AND_NAN)
+    obj = doc.as_obj
+    assert math.isnan(obj['hello'])
+    assert math.isinf(obj['world'])
 
 
 def test_document_get_pointer():

@@ -196,12 +196,20 @@ static int
 Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
     char *content = NULL;
-    static char *kwlist[] = {"content", NULL};
+    static char *kwlist[] = {"content", "flags", NULL};
     Py_ssize_t content_len;
     yyjson_read_err err;
+    yyjson_read_flag r_flag = 0;
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwds, "|s#", kwlist, &content,
-                                    &content_len)) {
+    if(!PyArg_ParseTupleAndKeywords(
+            args,
+            kwds,
+            "|s#$I",
+            kwlist,
+            &content,
+            &content_len,
+            &r_flag
+        )) {
         return -1;
     }
 
@@ -210,7 +218,7 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
         self->i_doc = yyjson_read_opts(
             content,
             content_len,
-            0,
+            r_flag,
             self->alc,
             &err
         );
@@ -275,46 +283,31 @@ static PyGetSetDef Document_members[] = {
     {NULL} /* Sentinel */
 };
 
-/**
- * Dump a Document to a string.
- **/
+PyDoc_STRVAR(
+    Document_dumps_doc,
+    "Dumps the document to a string and returns it.\n"
+    "\n"
+    ":param flags: Flags that control JSON writing behaviour.\n"
+    ":type flags: :class:`yyjson.WriterFlags`, optional"
+);
 static PyObject *
 Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {
-        "pretty_print",
-        "escape_unicode",
-        "escape_slashes",
-        "allow_infinity",
-        "inf_and_nan_as_null",
+        "flags",
         NULL
     };
-    bool f_pretty_print = false;
-    bool f_escape_unicode = false;
-    bool f_escape_slashes = false;
-    bool f_allow_infinity = false;
-    bool f_inf_and_nan_as_null = false;
     yyjson_write_flag w_flag = 0;
 
     if(!PyArg_ParseTupleAndKeywords(
             args,
             kwds,
-            "|$pppp",
+            "|$I",
             kwlist,
-            &f_pretty_print,
-            &f_escape_unicode,
-            &f_escape_slashes,
-            &f_allow_infinity,
-            &f_inf_and_nan_as_null
+            &w_flag
         )) {
         return NULL;
     }
-
-    if (f_pretty_print) w_flag |= YYJSON_WRITE_PRETTY;
-    if (f_escape_unicode) w_flag |= YYJSON_WRITE_ESCAPE_UNICODE;
-    if (f_escape_slashes) w_flag |= YYJSON_WRITE_ESCAPE_SLASHES;
-    if (f_allow_infinity) w_flag |= YYJSON_WRITE_ALLOW_INF_AND_NAN;
-    if (f_inf_and_nan_as_null) w_flag |= YYJSON_WRITE_INF_AND_NAN_AS_NULL;
 
     char *result = NULL;
     size_t w_len;
@@ -353,9 +346,13 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     return obj_result;
 }
 
-/**
- * Dump a Document to a string.
- **/
+PyDoc_STRVAR(
+    Document_get_pointer_doc,
+    "Returns the JSON element at the given JSON pointer (RFC 6901).\n"
+    "\n"
+    ":param pointer: JSON Pointer to search for.\n"
+    ":type pointer: str"
+);
 static PyObject *
 Document_get_pointer(DocumentObject *self, PyObject *args)
 {
@@ -406,12 +403,12 @@ static PyMethodDef Document_methods[] = {
     {"dumps",
         (PyCFunction)(void(*)(void))Document_dumps,
         METH_VARARGS | METH_KEYWORDS,
-        "Dump the document to a string."
+        Document_dumps_doc
     },
     {"get_pointer",
         (PyCFunction)(void(*)(void))Document_get_pointer,
         METH_VARARGS,
-        "Get the element at the matching JSON Pointer (RFC 6901)."
+        Document_get_pointer_doc
     },
     {NULL} /* Sentinel */
 };
