@@ -22,17 +22,27 @@
 #   pragma clang diagnostic ignored "-Wunused-function"
 #   pragma clang diagnostic ignored "-Wunused-parameter"
 #   pragma clang diagnostic ignored "-Wunused-label"
+#   pragma clang diagnostic ignored "-Wunused-macros"
 #elif defined(__GNUC__)
+#   if (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
 #   pragma GCC diagnostic push
+#   endif
 #   pragma GCC diagnostic ignored "-Wunused-function"
 #   pragma GCC diagnostic ignored "-Wunused-parameter"
 #   pragma GCC diagnostic ignored "-Wunused-label"
+#   pragma GCC diagnostic ignored "-Wunused-macros"
 #elif defined(_MSC_VER)
 #   pragma warning(push)
 #   pragma warning(disable:4100) /* unreferenced formal parameter */
 #   pragma warning(disable:4102) /* unreferenced label */
 #   pragma warning(disable:4127) /* conditional expression is constant */
+#   pragma warning(disable:4706) /* assignment within conditional expression */
 #endif
+
+/* version, same as YYJSON_VERSION_HEX */
+yyjson_api uint32_t yyjson_version(void) {
+    return YYJSON_VERSION_HEX;
+}
 
 
 
@@ -41,76 +51,96 @@
  *============================================================================*/
 
 /* gcc version check */
-#ifndef yyjson_gcc_available
-#   define yyjson_gcc_available(major, minor, patch) \
-        ((__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__) >= \
-        (major * 10000 + minor * 100 + patch))
+#if defined(__GNUC__)
+#   if defined(__GNUC_MINOR__) && defined(__GNUC_PATCHLEVEL__)
+#       define yyjson_gcc_available(major, minor, patch) \
+            ((__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__) \
+            >= (major * 10000 + minor * 100 + patch))
+#   elif defined(__GNUC_MINOR__)
+#       define yyjson_gcc_available(major, minor, patch) \
+            ((__GNUC__ * 10000 + __GNUC_MINOR__ * 100) \
+            >= (major * 10000 + minor * 100 + patch))
+#   else
+#       define yyjson_gcc_available(major, minor, patch) \
+            ((__GNUC__ * 10000) >= (major * 10000 + minor * 100 + patch))
+#   endif
+#else
+#       define yyjson_gcc_available(major, minor, patch) 0
 #endif
 
 /* real gcc check */
-#ifndef yyjson_is_real_gcc
-#   if !defined(__clang__) && !defined(__INTEL_COMPILER) && !defined(__ICC) && \
-        defined(__GNUC__) && defined(__GNUC_MINOR__)
-#       define yyjson_is_real_gcc 1
-#   endif
+#if !defined(__clang__) && !defined(__INTEL_COMPILER) && !defined(__ICC) && \
+    defined(__GNUC__) && defined(__GNUC_MINOR__)
+#   define YYJSON_IS_REAL_GCC 1
+#else
+#   define YYJSON_IS_REAL_GCC 0
 #endif
 
 /* msvc intrinsic */
-#if _MSC_VER >= 1400
+#if YYJSON_MSC_VER >= 1400
 #   include <intrin.h>
 #   if defined(_M_AMD64) || defined(_M_ARM64)
 #       define MSC_HAS_BIT_SCAN_64 1
 #       pragma intrinsic(_BitScanForward64)
 #       pragma intrinsic(_BitScanReverse64)
+#   else
+#       define MSC_HAS_BIT_SCAN_64 0
 #   endif
 #   if defined(_M_AMD64) || defined(_M_ARM64) || \
         defined(_M_IX86) || defined(_M_ARM)
 #       define MSC_HAS_BIT_SCAN 1
 #       pragma intrinsic(_BitScanForward)
 #       pragma intrinsic(_BitScanReverse)
+#   else
+#       define MSC_HAS_BIT_SCAN 0
 #   endif
 #   if defined(_M_AMD64)
 #       define MSC_HAS_UMUL128 1
 #       pragma intrinsic(_umul128)
+#   else
+#       define MSC_HAS_UMUL128 0
 #   endif
+#else
+#   define MSC_HAS_BIT_SCAN_64 0
+#   define MSC_HAS_BIT_SCAN 0
+#   define MSC_HAS_UMUL128 0
 #endif
 
 /* gcc builtin */
 #if yyjson_has_builtin(__builtin_clzll) || yyjson_gcc_available(3, 4, 0)
 #   define GCC_HAS_CLZLL 1
+#else
+#   define GCC_HAS_CLZLL 0
 #endif
 
 #if yyjson_has_builtin(__builtin_ctzll) || yyjson_gcc_available(3, 4, 0)
 #   define GCC_HAS_CTZLL 1
+#else
+#   define GCC_HAS_CTZLL 0
 #endif
 
 /* int128 type */
-#ifndef YYJSON_HAS_INT128
-#   if (__SIZEOF_INT128__ == 16) && \
-       (defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER))
-#       define YYJSON_HAS_INT128 1
-#   else
-#       define YYJSON_HAS_INT128 0
-#   endif
+#if defined(__SIZEOF_INT128__) && (__SIZEOF_INT128__ == 16) && \
+    (defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER))
+#    define YYJSON_HAS_INT128 1
+#else
+#    define YYJSON_HAS_INT128 0
 #endif
 
 /* IEEE 754 floating-point binary representation */
-#ifndef YYJSON_HAS_IEEE_754
-#   if __STDC_IEC_559__
-#       define YYJSON_HAS_IEEE_754 1
-#   elif (FLT_RADIX == 2) && (DBL_MANT_DIG == 53) && \
-         (DBL_MIN_EXP == -1021) && (DBL_MAX_EXP == 1024) && \
-         (DBL_MIN_10_EXP == -307) && (DBL_MAX_10_EXP == 308)
-#       define YYJSON_HAS_IEEE_754 1
-#   else
-#       define YYJSON_HAS_IEEE_754 0
-#       if __FAST_MATH__ || __USE_FAST_MATH__
-#           warning "-ffast-math" may break the nan/inf check
-#       endif
-#   endif
+#if defined(__STDC_IEC_559__) || defined(__STDC_IEC_60559_BFP__)
+#   define YYJSON_HAS_IEEE_754 1
+#elif (FLT_RADIX == 2) && (DBL_MANT_DIG == 53) && (DBL_DIG == 15) && \
+     (DBL_MIN_EXP == -1021) && (DBL_MAX_EXP == 1024) && \
+     (DBL_MIN_10_EXP == -307) && (DBL_MAX_10_EXP == 308)
+#   define YYJSON_HAS_IEEE_754 1
+#else
+#   define YYJSON_HAS_IEEE_754 0
 #endif
 
 /*
+ Correct rounding in double number computations.
+ 
  On the x86 architecture, some compilers may use x87 FPU instructions for
  floating-point arithmetic. The x87 FPU loads all floating point number as
  80-bit double-extended precision internally, then rounds the result to original
@@ -119,7 +149,7 @@
  
  Here are some examples of double precision calculation error:
  
-     2877.0 / 1e6 == 0.002877, but x87 returns 0.0028770000000000002
+     2877.0 / 1e6   == 0.002877,  but x87 returns 0.0028770000000000002
      43683.0 * 1e21 == 4.3683e25, but x87 returns 4.3683000000000004e25
  
  Here are some examples of compiler flags to generate x87 instructions on x86:
@@ -128,9 +158,9 @@
      gcc/icc -m32 -mfpmath=387
      msvc /arch:SSE or /arch:IA32
  
- If we are sure that there's no similar error described above, we can define the 
+ If we are sure that there's no similar error described above, we can define the
  YYJSON_DOUBLE_MATH_CORRECT as 1 to enable the fast path calculation. This is
- not an accurate detection, it's just try to avoid the error at compiler time. 
+ not an accurate detection, it's just try to avoid the error at compiler time.
  An accurate detection can be done at runtime:
  
      bool is_double_math_correct(void) {
@@ -140,46 +170,59 @@
      }
  
  */
-#ifndef YYJSON_DOUBLE_MATH_CORRECT
-#   if !defined(FLT_EVAL_METHOD) && defined(__FLT_EVAL_METHOD__)
-#       define FLT_EVAL_METHOD __FLT_EVAL_METHOD__
-#   endif
-#   if defined(FLT_EVAL_METHOD) && FLT_EVAL_METHOD != 0 && FLT_EVAL_METHOD != 1
-#       define YYJSON_DOUBLE_MATH_CORRECT 0
-#   elif defined(i386) || defined(__i386) || defined(__i386__) || \
-        defined(_X86_) || defined(__X86__) || defined(_M_IX86) || \
-        defined(__I86__) || defined(__IA32__) || defined(__THW_INTEL)
-#       if (defined(_MSC_VER) && _M_IX86_FP == 2) || __SSE2_MATH__
-#           define YYJSON_DOUBLE_MATH_CORRECT 1
-#       else
-#           define YYJSON_DOUBLE_MATH_CORRECT 0
-#       endif
-#   elif defined(__x86_64) || defined(__x86_64__) || \
-        defined(__amd64) || defined(__amd64__) || \
-        defined(_M_AMD64) || defined(_M_X64) || \
-        defined(__ia64) || defined(_IA64) || defined(__IA64__) ||  \
-        defined(__ia64__) || defined(_M_IA64) || defined(__itanium__) || \
-        defined(__arm64) || defined(__arm64__) || \
-        defined(__aarch64__) || defined(_M_ARM64) || \
-        defined(__arm) || defined(__arm__) || defined(_ARM_) || \
-        defined(_ARM) || defined(_M_ARM) || defined(__TARGET_ARCH_ARM) || \
-        defined(mips) || defined(__mips) || defined(__mips__) || \
-        defined(MIPS) || defined(_MIPS_) || defined(__MIPS__) || \
-        defined(_ARCH_PPC64) || defined(__PPC64__) || \
-        defined(__ppc64__) || defined(__powerpc64__) || \
-        defined(__powerpc) || defined(__powerpc__) || defined(__POWERPC__) || \
-        defined(__ppc__) || defined(__ppc) || defined(__PPC__) || \
-        defined(__sparcv9) || defined(__sparc_v9__) || \
-        defined(__sparc) || defined(__sparc__) || defined(__sparc64__) || \
-        defined(__alpha) || defined(__alpha__) || defined(_M_ALPHA) || \
-        defined(__or1k__) || defined(__OR1K__) || defined(OR1K) || \
-        defined(__hppa) || defined(__hppa__) || defined(__HPPA__) || \
-        defined(__riscv) || defined(__riscv__) || \
-        defined(__s390__) || defined(__avr32__) || defined(__SH4__) || \
-        defined(__e2k__) || defined(__arc__) || defined(__EMSCRIPTEN__)
+#if !defined(FLT_EVAL_METHOD) && defined(__FLT_EVAL_METHOD__)
+#    define FLT_EVAL_METHOD __FLT_EVAL_METHOD__
+#endif
+
+#if defined(FLT_EVAL_METHOD) && FLT_EVAL_METHOD != 0 && FLT_EVAL_METHOD != 1
+#    define YYJSON_DOUBLE_MATH_CORRECT 0
+#elif defined(i386) || defined(__i386) || defined(__i386__) || \
+    defined(_X86_) || defined(__X86__) || defined(_M_IX86) || \
+    defined(__I86__) || defined(__IA32__) || defined(__THW_INTEL)
+#   if (defined(_MSC_VER) && defined(_M_IX86_FP) && _M_IX86_FP == 2) || \
+        (defined(__SSE2_MATH__) && __SSE2_MATH__)
 #       define YYJSON_DOUBLE_MATH_CORRECT 1
 #   else
-#       define YYJSON_DOUBLE_MATH_CORRECT 0 /* unknown */
+#       define YYJSON_DOUBLE_MATH_CORRECT 0
+#   endif
+#elif defined(__x86_64) || defined(__x86_64__) || \
+    defined(__amd64) || defined(__amd64__) || \
+    defined(_M_AMD64) || defined(_M_X64) || \
+    defined(__ia64) || defined(_IA64) || defined(__IA64__) ||  \
+    defined(__ia64__) || defined(_M_IA64) || defined(__itanium__) || \
+    defined(__arm64) || defined(__arm64__) || \
+    defined(__aarch64__) || defined(_M_ARM64) || \
+    defined(__arm) || defined(__arm__) || defined(_ARM_) || \
+    defined(_ARM) || defined(_M_ARM) || defined(__TARGET_ARCH_ARM) || \
+    defined(mips) || defined(__mips) || defined(__mips__) || \
+    defined(MIPS) || defined(_MIPS_) || defined(__MIPS__) || \
+    defined(_ARCH_PPC64) || defined(__PPC64__) || \
+    defined(__ppc64__) || defined(__powerpc64__) || \
+    defined(__powerpc) || defined(__powerpc__) || defined(__POWERPC__) || \
+    defined(__ppc__) || defined(__ppc) || defined(__PPC__) || \
+    defined(__sparcv9) || defined(__sparc_v9__) || \
+    defined(__sparc) || defined(__sparc__) || defined(__sparc64__) || \
+    defined(__alpha) || defined(__alpha__) || defined(_M_ALPHA) || \
+    defined(__or1k__) || defined(__OR1K__) || defined(OR1K) || \
+    defined(__hppa) || defined(__hppa__) || defined(__HPPA__) || \
+    defined(__riscv) || defined(__riscv__) || \
+    defined(__s390__) || defined(__avr32__) || defined(__SH4__) || \
+    defined(__e2k__) || defined(__arc__) || defined(__loongarch__) || \
+    defined(__EMSCRIPTEN__) || defined(__wasm__)
+#   define YYJSON_DOUBLE_MATH_CORRECT 1
+#else
+#   define YYJSON_DOUBLE_MATH_CORRECT 0 /* unknown, disable fast path */
+#endif
+
+/*
+ Microsoft Visual C++ 6.0 doesn't support converting number from u64 to f64:
+ error C2520: conversion from unsigned __int64 to double not implemented.
+ */
+#ifndef YYJSON_U64_TO_F64_NO_IMPL
+#   if (0 < YYJSON_MSC_VER) && (YYJSON_MSC_VER <= 1200)
+#       define YYJSON_U64_TO_F64_NO_IMPL 1
+#   else
+#       define YYJSON_U64_TO_F64_NO_IMPL 0
 #   endif
 #endif
 
@@ -199,28 +242,28 @@
 #define YYJSON_BIG_ENDIAN       4321
 #define YYJSON_LITTLE_ENDIAN    1234
 
-#if __BYTE_ORDER__
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__
 #   if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #       define YYJSON_ENDIAN YYJSON_BIG_ENDIAN
 #   elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #       define YYJSON_ENDIAN YYJSON_LITTLE_ENDIAN
 #   endif
 
-#elif __BYTE_ORDER
+#elif defined(__BYTE_ORDER) && __BYTE_ORDER
 #   if __BYTE_ORDER == __BIG_ENDIAN
 #       define YYJSON_ENDIAN YYJSON_BIG_ENDIAN
 #   elif __BYTE_ORDER == __LITTLE_ENDIAN
 #       define YYJSON_ENDIAN YYJSON_LITTLE_ENDIAN
 #   endif
 
-#elif BYTE_ORDER
+#elif defined(BYTE_ORDER) && BYTE_ORDER
 #   if BYTE_ORDER == BIG_ENDIAN
 #       define YYJSON_ENDIAN YYJSON_BIG_ENDIAN
 #   elif BYTE_ORDER == LITTLE_ENDIAN
 #       define YYJSON_ENDIAN YYJSON_LITTLE_ENDIAN
 #   endif
 
-#elif (__LITTLE_ENDIAN__ == 1) || \
+#elif (defined(__LITTLE_ENDIAN__) && __LITTLE_ENDIAN__ == 1) || \
     defined(__i386) || defined(__i386__) || \
     defined(_X86_) || defined(__X86__) || \
     defined(_M_IX86) || defined(__THW_INTEL__) || \
@@ -232,10 +275,11 @@
     defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || \
     defined(__alpha) || defined(__alpha__) || defined(_M_ALPHA) || \
     defined(__riscv) || defined(__riscv__) || \
-    defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__)
+    defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || \
+    defined(__EMSCRIPTEN__) || defined(__wasm__)
 #   define YYJSON_ENDIAN YYJSON_LITTLE_ENDIAN
 
-#elif (__BIG_ENDIAN__ == 1) || \
+#elif (defined(__BIG_ENDIAN__) && __BIG_ENDIAN__ == 1) || \
     defined(__ARMEB__) || defined(__THUMBEB__) || defined(__AARCH64EB__) || \
     defined(_MIPSEB) || defined(__MIPSEB) || defined(__MIPSEB__) || \
     defined(_ARCH_PPC) || defined(_ARCH_PPC64) || \
@@ -245,31 +289,88 @@
 #   define YYJSON_ENDIAN YYJSON_BIG_ENDIAN
 
 #else
-#   undef YYJSON_ENDIAN /* unknown endian */
+#   define YYJSON_ENDIAN 0 /* unknown endian, detect at runtime */
 #endif
 
-/* An estimated initial ratio of the pretty JSON (data_size / value_count). */
-/* This value is used to avoid frequent memory allocation calls for reader. */
-#ifndef YYJSON_READER_ESTIMATED_PRETTY_RATIO
-#   define YYJSON_READER_ESTIMATED_PRETTY_RATIO 16
+/*
+ Unaligned memory access detection.
+ 
+ Some architectures are unable to perform unaligned memory accesses, and the
+ unaligned access may cause processor exceptions.
+ 
+ Modern compilers can make some optimizations for unaligned access.
+ For example: https://godbolt.org/z/Ejo3Pa
+ 
+    typedef struct { char c[2] } vec2;
+    void copy_vec2(vec2 *dst, vec2 *src) {
+        *dst = *src;
+    }
+ 
+ Compiler may generate `load/store` or `move` instruction if target architecture
+ supports unaligned access, otherwise it may generate `call memcpy` instruction.
+ 
+ We want to avoid `memcpy` calls, so we should disable unaligned access by
+ define `YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS` as 1 on these architectures.
+ */
+#ifndef YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS
+#   if defined(i386) || defined(__i386) || defined(__i386__) || \
+        defined(__i486__) || defined(__i586__) || defined(__i686__) || \
+        defined(_X86_) || defined(__X86__) || defined(_M_IX86) || \
+        defined(__I86__) || defined(__IA32__) || \
+        defined(__THW_INTEL) || defined(__THW_INTEL__) || \
+        defined(__x86_64) || defined(__x86_64__) || \
+        defined(__amd64) || defined(__amd64__) || \
+        defined(_M_AMD64) || defined(_M_X64)
+#       define YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS 0 /* x86 */
+
+#   elif defined(__ia64) || defined(_IA64) || defined(__IA64__) ||  \
+        defined(__ia64__) || defined(_M_IA64) || defined(__itanium__)
+#       define YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS 1 /* Itanium */
+
+#   elif defined(__arm64) || defined(__arm64__) || \
+        defined(__AARCH64EL__) || defined(__AARCH64EB__) || \
+        defined(__aarch64__) || defined(_M_ARM64)
+#       define YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS 0 /* ARM64 */
+
+#   elif defined(__ARM_ARCH_4__) || defined(__ARM_ARCH_4T__) || \
+        defined(__ARM_ARCH_5TEJ__) || defined(__ARM_ARCH_5TE__) || \
+        defined(__ARM_ARCH_6T2__) || defined(__ARM_ARCH_6KZ__) || \
+        defined(__ARM_ARCH_6Z__) || defined(__ARM_ARCH_6K__)
+#       define YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS 1 /* ARM */
+
+#   elif defined(__ppc64__) || defined(__PPC64__) || \
+        defined(__powerpc64__) || defined(_ARCH_PPC64) || \
+        defined(__ppc) || defined(__ppc__) || defined(__PPC__) || \
+        defined(__powerpc) || defined(__powerpc__) || defined(__POWERPC__) || \
+        defined(_ARCH_PPC) || defined(_M_PPC) || \
+        defined(__PPCGECKO__) || defined(__PPCBROADWAY__) || defined(_XENON)
+#       define YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS 0 /* PowerPC */
+
+#   else
+#       define YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS 0 /* Unknown */
+#   endif
+
 #endif
 
-/* An estimated initial ratio of the minify JSON (data_size / value_count). */
-/* This value is used to avoid frequent memory allocation calls for reader. */
-#ifndef YYJSON_READER_ESTIMATED_MINIFY_RATIO
-#   define YYJSON_READER_ESTIMATED_MINIFY_RATIO 6
-#endif
+/* Some estimated initial ratio of the JSON data (data_size / value_count).
+   These values are used to avoid frequent memory allocation calls. */
+#define YYJSON_READER_ESTIMATED_PRETTY_RATIO 16
+#define YYJSON_READER_ESTIMATED_MINIFY_RATIO 6
+#define YYJSON_WRITER_ESTIMATED_PRETTY_RATIO 32
+#define YYJSON_WRITER_ESTIMATED_MINIFY_RATIO 18
 
-/* An estimated initial ratio of the pretty JSON (data_size / value_count). */
-/* This value is used to avoid frequent memory allocation calls for writer. */
-#ifndef YYJSON_WRITER_ESTIMATED_PRETTY_RATIO
-#   define YYJSON_WRITER_ESTIMATED_PRETTY_RATIO 32
+/* Default value for public flags. */
+#ifndef YYJSON_DISABLE_READER
+#define YYJSON_DISABLE_READER 0
 #endif
-
-/* An estimated initial ratio of the minify JSON (data_size / value_count). */
-/* This value is used to avoid frequent memory allocation calls for writer. */
-#ifndef YYJSON_WRITER_ESTIMATED_MINIFY_RATIO
-#   define YYJSON_WRITER_ESTIMATED_MINIFY_RATIO 18
+#ifndef YYJSON_DISABLE_WRITER
+#define YYJSON_DISABLE_WRITER 0
+#endif
+#ifndef YYJSON_DISABLE_FAST_FP_CONV
+#define YYJSON_DISABLE_FAST_FP_CONV 0
+#endif
+#ifndef YYJSON_DISABLE_NON_STANDARD
+#define YYJSON_DISABLE_NON_STANDARD 0
 #endif
 
 
@@ -335,10 +436,6 @@
 /* Maximum number of digits for reading u64 safety. */
 #undef  U64_SAFE_DIG
 #define U64_SAFE_DIG    19
-
-/* Padding size for JSON reader input. */
-#undef  PADDING_SIZE
-#define PADDING_SIZE    4
 
 
 
@@ -409,6 +506,8 @@ typedef uint32_t    u32;
 typedef int64_t     i64;
 typedef uint64_t    u64;
 typedef size_t      usize;
+
+/** 128-bit integer, used by floating-point number reader and writer. */
 #if YYJSON_HAS_INT128
 __extension__ typedef __int128          i128;
 __extension__ typedef unsigned __int128 u128;
@@ -424,29 +523,68 @@ typedef union v16_uni { v16 v; u16 u; } v16_uni;
 typedef union v32_uni { v32 v; u32 u; } v32_uni;
 typedef union v64_uni { v64 v; u64 u; } v64_uni;
 
-/** 64-bit floating point union, used to avoid the type-based aliasing rule */
-typedef union { u64 u; f64 f; } f64_uni;
-
 
 
 /*==============================================================================
  * Character Utils
  *============================================================================*/
 
-static_inline void byte_move_2(void *dst, void *src) {
+static_inline void byte_move_2(void *dst, const void *src) {
+#if YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS
+    ((u8 *)dst)[0] = ((u8 *)src)[0];
+    ((u8 *)dst)[1] = ((u8 *)src)[1];
+#else
     memmove(dst, src, 2);
+#endif
 }
 
-static_inline void byte_move_4(void *dst, void *src) {
+static_inline void byte_move_4(void *dst, const void *src) {
+#if YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS
+    ((u8 *)dst)[0] = ((u8 *)src)[0];
+    ((u8 *)dst)[1] = ((u8 *)src)[1];
+    ((u8 *)dst)[2] = ((u8 *)src)[2];
+    ((u8 *)dst)[3] = ((u8 *)src)[3];
+#else
     memmove(dst, src, 4);
+#endif
 }
 
-static_inline void byte_move_8(void *dst, void *src) {
+static_inline void byte_move_8(void *dst, const void *src) {
+#if YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS
+    ((u8 *)dst)[0] = ((u8 *)src)[0];
+    ((u8 *)dst)[1] = ((u8 *)src)[1];
+    ((u8 *)dst)[2] = ((u8 *)src)[2];
+    ((u8 *)dst)[3] = ((u8 *)src)[3];
+    ((u8 *)dst)[4] = ((u8 *)src)[4];
+    ((u8 *)dst)[5] = ((u8 *)src)[5];
+    ((u8 *)dst)[6] = ((u8 *)src)[6];
+    ((u8 *)dst)[7] = ((u8 *)src)[7];
+#else
     memmove(dst, src, 8);
+#endif
 }
 
-static_inline void byte_move_16(void *dst, void *src) {
+static_inline void byte_move_16(void *dst, const void *src) {
+#if YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS
+    ((u8 *)dst)[0] = ((u8 *)src)[0];
+    ((u8 *)dst)[1] = ((u8 *)src)[1];
+    ((u8 *)dst)[2] = ((u8 *)src)[2];
+    ((u8 *)dst)[3] = ((u8 *)src)[3];
+    ((u8 *)dst)[4] = ((u8 *)src)[4];
+    ((u8 *)dst)[5] = ((u8 *)src)[5];
+    ((u8 *)dst)[6] = ((u8 *)src)[6];
+    ((u8 *)dst)[7] = ((u8 *)src)[7];
+    ((u8 *)dst)[8] = ((u8 *)src)[8];
+    ((u8 *)dst)[9] = ((u8 *)src)[9];
+    ((u8 *)dst)[10] = ((u8 *)src)[10];
+    ((u8 *)dst)[11] = ((u8 *)src)[11];
+    ((u8 *)dst)[12] = ((u8 *)src)[12];
+    ((u8 *)dst)[13] = ((u8 *)src)[13];
+    ((u8 *)dst)[14] = ((u8 *)src)[14];
+    ((u8 *)dst)[15] = ((u8 *)src)[15];
+#else
     memmove(dst, src, 16);
+#endif
 }
 
 static_inline bool byte_match_1(void *buf, const char *pat) {
@@ -454,23 +592,31 @@ static_inline bool byte_match_1(void *buf, const char *pat) {
 }
 
 static_inline bool byte_match_2(void *buf, const char *pat) {
+#if YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS
+    return
+    ((u8 *)buf)[0] == ((const u8 *)pat)[0] &&
+    ((u8 *)buf)[1] == ((const u8 *)pat)[1];
+#else
     v16_uni u1, u2;
-    u1.v = *(v16 *)pat;
-    u2.v = *(v16 *)buf;
+    u1.v = *(const v16 *)pat;
+    u2.v = *(const v16 *)buf;
     return u1.u == u2.u;
+#endif
 }
 
 static_inline bool byte_match_4(void *buf, const char *pat) {
+#if YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS
+    return
+    ((u8 *)buf)[0] == ((const u8 *)pat)[0] &&
+    ((u8 *)buf)[1] == ((const u8 *)pat)[1] &&
+    ((u8 *)buf)[2] == ((const u8 *)pat)[2] &&
+    ((u8 *)buf)[3] == ((const u8 *)pat)[3];
+#else
     v32_uni u1, u2;
-    u1.v = *(v32 *)pat;
-    u2.v = *(v32 *)buf;
+    u1.v = *(const v32 *)pat;
+    u2.v = *(const v32 *)buf;
     return u1.u == u2.u;
-}
-
-static_inline u16 byte_load_2(void *src) {
-    v16_uni uni;
-    uni.v = *(v16 *)src;
-    return uni.u;
+#endif
 }
 
 static_inline u32 byte_load_4(void *src) {
@@ -479,22 +625,17 @@ static_inline u32 byte_load_4(void *src) {
     return uni.u;
 }
 
-static_inline u64 byte_load_8(void *src) {
-    v64_uni uni;
-    uni.v = *(v64 *)src;
-    return uni.u;
-}
-
-#if (__STDC__ >= 1 && __STDC_VERSION__ >= 199901L)
+/** Compound Literals, C99 only. */
+#if YYJSON_STDC_VER >= 199901L && !defined(__cplusplus)
 
 #define v16_make(c1, c2) \
-    ((v16){c1, c2})
+    ((v16){ c1, c2 })
 
 #define v32_make(c1, c2, c3, c4) \
-    ((v32){c1, c2, c3, c4})
+    ((v32){ c1, c2, c3, c4 })
 
 #define v64_make(c1, c2, c3, c4, c5, c6, c7, c8) \
-    ((v64){c1, c2, c3, c4, c5, c6, c7, c8})
+    ((v64){ c1, c2, c3, c4, c5, c6, c7, c8 })
 
 #else
 
@@ -534,20 +675,40 @@ static_inline v64 v64_make(char c1, char c2, char c3, char c4,
 
 /*==============================================================================
  * Number Utils
+ * These functions are used to detect and convert NaN and Inf numbers.
  *============================================================================*/
+
+/**
+ This union is used to avoid violating the strict aliasing rule in C.
+ `memcpy` can be used in both C and C++, but it may reduce performance without
+ compiler optimization.
+ */
+typedef union { u64 u; f64 f; } f64_uni;
 
 /** Convert raw binary to double. */
 static_inline f64 f64_from_raw(u64 u) {
+#ifndef __cplusplus
     f64_uni uni;
     uni.u = u;
     return uni.f;
+#else
+    f64 f;
+    memcpy(&f, &u, 8);
+    return f;
+#endif
 }
 
 /** Convert double to raw binary. */
 static_inline u64 f64_to_raw(f64 f) {
+#ifndef __cplusplus
     f64_uni uni;
     uni.f = f;
     return uni.u;
+#else
+    u64 u;
+    memcpy(&u, &f, 8);
+    return u;
+#endif
 }
 
 /** Get raw 'infinity' with sign. */
@@ -572,34 +733,19 @@ static_inline u64 f64_raw_get_nan(bool sign) {
 #endif
 }
 
-/** Checks if the given double has finite value. */
-static_inline bool f64_isfinite(f64 f) {
-#if defined(isfinite)
-    return !!isfinite(f);
+/**
+ Convert normalized u64 (highest bit is 1) to f64.
+ 
+ Some compiler (such as Microsoft Visual C++ 6.0) do not support converting
+ number from u64 to f64. This function will first convert u64 to i64 and then
+ to f64, with `to nearest` rounding mode.
+ */
+static_inline f64 normalized_u64_to_f64(u64 val) {
+#if YYJSON_U64_TO_F64_NO_IMPL
+    i64 sig = (i64)((val >> 1) | (val & 1));
+    return ((f64)sig) * (f64)2.0;
 #else
-    f64 f1 = f;
-    f64 f2 = f - f;
-    return (f1 == f1) && (f2 == f2);
-#endif
-}
-
-/** Checks if the given double is infinite. */
-static_inline bool f64_isinf(f64 f) {
-#if defined(isinf)
-    return !!isinf(f);
-#else
-    f64 f1 = f;
-    f64 f2 = f - f;
-    return (f1 == f1) && (f2 != f2);
-#endif
-}
-
-/** Checks if the given double is nan. */
-static_inline bool f64_isnan(f64 f) {
-#if defined(isnan)
-    return !!isnan(f);
-#else
-    return f != f;
+    return (f64)val;
 #endif
 }
 
@@ -607,6 +753,7 @@ static_inline bool f64_isnan(f64 f) {
 
 /*==============================================================================
  * Size Utils
+ * These functions are used for memory allocation.
  *============================================================================*/
 
 /** Returns whether the size is overflow after increment. */
@@ -640,23 +787,31 @@ static_inline usize size_align_down(usize size, usize align) {
 
 /** Align address upwards (may overflow). */
 static_inline void *mem_align_up(void *mem, usize align) {
-    return (void *)size_align_up((usize)mem, align);
+    usize size;
+    memcpy(&size, &mem, sizeof(usize));
+    size = size_align_up(size, align);
+    memcpy(&mem, &size, sizeof(usize));
+    return mem;
 }
 
 /** Align address downwards. */
 static_inline void *mem_align_down(void *mem, usize align) {
-    return (void *)size_align_down((usize)mem, align);
+    usize size;
+    memcpy(&size, &mem, sizeof(usize));
+    size = size_align_down(size, align);
+    memcpy(&mem, &size, sizeof(usize));
+    return mem;
 }
 
 
 
 /*==============================================================================
  * Bits Utils
+ * These functions are used by the floating-point number reader and writer.
  *============================================================================*/
 
 /** Returns the number of leading 0-bits in value (input should not be 0). */
-static_inline
-u32 u64_lz_bits(u64 v) {
+static_inline u32 u64_lz_bits(u64 v) {
 #if GCC_HAS_CLZLL
     return (u32)__builtin_clzll(v);
 #elif MSC_HAS_BIT_SCAN_64
@@ -715,9 +870,9 @@ static_inline u32 u64_tz_bits(u64 v) {
 
 
 
-
 /*==============================================================================
  * 128-bit Integer Utils
+ * These functions are used by the floating-point number reader and writer.
  *============================================================================*/
 
 /** Multiplies two 64-bit unsigned integers (a * b),
@@ -763,9 +918,49 @@ static_inline void u128_mul_add(u64 a, u64 b, u64 c, u64 *hi, u64 *lo) {
 
 
 /*==============================================================================
+ * File Utils
+ * These functions are used to read and write JSON files.
+ *============================================================================*/
+
+#define YYJSON_FOPEN_EXT
+#if !defined(_MSC_VER) && defined(__GLIBC__) && defined(__GLIBC_PREREQ)
+#   if __GLIBC_PREREQ(2, 7)
+#       undef YYJSON_FOPEN_EXT
+#       define YYJSON_FOPEN_EXT "e" /* glibc extension to enable O_CLOEXEC */
+#   endif
+#endif
+
+static_inline FILE *fopen_safe(const char *path, const char *mode) {
+#if YYJSON_MSC_VER >= 1400
+    FILE *file = NULL;
+    if (fopen_s(&file, path, mode) != 0) return NULL;
+    return file;
+#else
+    return fopen(path, mode);
+#endif
+}
+
+static_inline FILE *fopen_readonly(const char *path) {
+    return fopen_safe(path, "rb" YYJSON_FOPEN_EXT);
+}
+
+static_inline FILE *fopen_writeonly(const char *path) {
+    return fopen_safe(path, "wb" YYJSON_FOPEN_EXT);
+}
+
+static_inline usize fread_safe(void *buf, usize size, FILE *file) {
+#if YYJSON_MSC_VER >= 1400
+    return fread_s(buf, size, 1, size, file);
+#else
+    return fread(buf, 1, size, file);
+#endif
+}
+
+
+
+/*==============================================================================
  * Default Memory Allocator
- *
- * This is a simple wrapper of libc.
+ * This is a simple libc memory allocator wrapper.
  *============================================================================*/
 
 static void *default_malloc(void *ctx, usize size) {
@@ -780,7 +975,7 @@ static void default_free(void *ctx, void *ptr) {
     free(ptr);
 }
 
-const yyjson_alc YYJSON_DEFAULT_ALC = {
+static const yyjson_alc YYJSON_DEFAULT_ALC = {
     default_malloc,
     default_realloc,
     default_free,
@@ -791,8 +986,9 @@ const yyjson_alc YYJSON_DEFAULT_ALC = {
 
 /*==============================================================================
  * Pool Memory Allocator
- *
  * This is a simple memory allocator that uses linked list memory chunk.
+ * The following code will be executed only when the library user creates
+ * this allocator manually.
  *============================================================================*/
 
 /** chunk header */
@@ -823,7 +1019,7 @@ static void *pool_malloc(void *ctx_ptr, usize size) {
         }
         if (cur->size >= size + sizeof(pool_chunk) * 2) {
             /* too much space, split this chunk */
-            next = (pool_chunk *)((u8 *)cur + size);
+            next = (pool_chunk *)(void *)((u8 *)cur + size);
             next->size = cur->size - size;
             next->next = cur->next;
             cur->size = size;
@@ -876,7 +1072,7 @@ static void *pool_realloc(void *ctx_ptr, void *ptr, usize size) {
     if (unlikely(size <= cur->size)) {
         free_size = cur->size - size;
         if (free_size >= sizeof(pool_chunk) * 2) {
-            tmp = (pool_chunk *)((u8 *)cur + cur->size - free_size);
+            tmp = (pool_chunk *)(void *)((u8 *)cur + cur->size - free_size);
             tmp->size = free_size;
             pool_free(ctx_ptr, (void *)(tmp + 1));
             cur->size -= free_size;
@@ -897,7 +1093,7 @@ static void *pool_realloc(void *ctx_ptr, void *ptr, usize size) {
         cur->size + next->size >= size) {
         free_size = cur->size + next->size - size;
         if (free_size > sizeof(pool_chunk) * 2) {
-            tmp = (pool_chunk *)((u8 *)cur + size);
+            tmp = (pool_chunk *)(void *)((u8 *)cur + size);
             if (prev) prev->next = tmp;
             else ctx->free_list = tmp;
             tmp->next = next->next;
@@ -927,7 +1123,7 @@ bool yyjson_alc_pool_init(yyjson_alc *alc, void *buf, usize size) {
     if (unlikely(!alc || size < sizeof(pool_ctx) * 4)) return false;
     ctx = (pool_ctx *)mem_align_up(buf, sizeof(pool_ctx));
     if (unlikely(!ctx)) return false;
-    size -= ((u8 *)ctx - (u8 *)buf);
+    size -= (usize)((u8 *)ctx - (u8 *)buf);
     size = size_align_down(size, sizeof(pool_ctx));
     
     chunk = (pool_chunk *)(ctx + 1);
@@ -960,7 +1156,7 @@ static_inline void unsafe_yyjson_str_pool_release(yyjson_str_pool *pool,
 }
 
 static_inline void unsafe_yyjson_val_pool_release(yyjson_val_pool *pool,
-                                                       yyjson_alc *alc) {
+                                                  yyjson_alc *alc) {
     yyjson_val_chunk *chunk = pool->chunks, *next;
     while (chunk) {
         next = chunk->next;
@@ -1000,8 +1196,9 @@ bool unsafe_yyjson_val_pool_grow(yyjson_val_pool *pool,
     
     chunk->next = pool->chunks;
     pool->chunks = chunk;
-    pool->cur = (yyjson_mut_val *)((u8 *)chunk + sizeof(yyjson_mut_val));
-    pool->end = (yyjson_mut_val *)((u8 *)chunk + size);
+    pool->cur = (yyjson_mut_val *)(void *)((u8 *)chunk
+                                           + sizeof(yyjson_mut_val));
+    pool->end = (yyjson_mut_val *)(void *)((u8 *)chunk + size);
     
     size = yyjson_min(pool->chunk_size * 2, pool->chunk_size_max);
     pool->chunk_size = size;
@@ -1017,9 +1214,9 @@ void yyjson_mut_doc_free(yyjson_mut_doc *doc) {
     }
 }
 
-yyjson_mut_doc *yyjson_mut_doc_new(yyjson_alc *alc) {
+yyjson_mut_doc *yyjson_mut_doc_new(const yyjson_alc *alc) {
     yyjson_mut_doc *doc;
-    if (!alc) alc = (yyjson_alc *)&YYJSON_DEFAULT_ALC;
+    if (!alc) alc = &YYJSON_DEFAULT_ALC;
     doc = (yyjson_mut_doc *)alc->malloc(alc->ctx, sizeof(yyjson_mut_doc));
     if (!doc) return NULL;
     memset(doc, 0, sizeof(yyjson_mut_doc));
@@ -1028,12 +1225,12 @@ yyjson_mut_doc *yyjson_mut_doc_new(yyjson_alc *alc) {
     doc->str_pool.chunk_size = 0x100;
     doc->str_pool.chunk_size_max = 0x10000000;
     doc->val_pool.chunk_size = 0x10 * sizeof(yyjson_mut_val);
-    doc->val_pool.chunk_size_max = 0x1000000 *sizeof(yyjson_mut_val);
+    doc->val_pool.chunk_size_max = 0x1000000 * sizeof(yyjson_mut_val);
     return doc;
 }
 
 yyjson_api yyjson_mut_doc *yyjson_doc_mut_copy(yyjson_doc *i_doc,
-                                               yyjson_alc *alc) {
+                                               const yyjson_alc *alc) {
     yyjson_mut_doc *m_doc;
     yyjson_mut_val *m_val;
     
@@ -1041,6 +1238,23 @@ yyjson_api yyjson_mut_doc *yyjson_doc_mut_copy(yyjson_doc *i_doc,
     m_doc = yyjson_mut_doc_new(alc);
     if (!m_doc) return NULL;
     m_val = yyjson_val_mut_copy(m_doc, i_doc->root);
+    if (!m_val) {
+        yyjson_mut_doc_free(m_doc);
+        return NULL;
+    }
+    yyjson_mut_doc_set_root(m_doc, m_val);
+    return m_doc;
+}
+
+yyjson_api yyjson_mut_doc *yyjson_mut_doc_mut_copy(yyjson_mut_doc *i_doc,
+                                                   const yyjson_alc *alc) {
+    yyjson_mut_doc *m_doc;
+    yyjson_mut_val *m_val;
+    
+    if (!i_doc) return NULL;
+    m_doc = yyjson_mut_doc_new(alc);
+    if (!m_doc) return NULL;
+    m_val = yyjson_mut_val_mut_copy(m_doc, i_doc->root);
     if (!m_val) {
         yyjson_mut_doc_free(m_doc);
         return NULL;
@@ -1063,7 +1277,7 @@ yyjson_api yyjson_mut_val *yyjson_val_mut_copy(yyjson_mut_doc *m_doc,
     
     if (!m_doc || !i_vals) return NULL;
     i_end = unsafe_yyjson_get_next(i_vals);
-    i_vals_len = unsafe_yyjson_get_next(i_vals) - i_vals;
+    i_vals_len = (usize)(unsafe_yyjson_get_next(i_vals) - i_vals);
     m_vals = unsafe_yyjson_mut_val(m_doc, i_vals_len);
     if (!m_vals) return NULL;
     i_val = i_vals;
@@ -1118,7 +1332,129 @@ yyjson_api yyjson_mut_val *yyjson_val_mut_copy(yyjson_mut_doc *m_doc,
     return m_vals;
 }
 
+static yyjson_mut_val *unsafe_yyjson_mut_ctn_mut_copy(yyjson_mut_doc *m_doc,
+                                                      yyjson_mut_val *i_val) {
+    yyjson_type type = unsafe_yyjson_get_type(i_val);
+    yyjson_mut_val *m_val = unsafe_yyjson_mut_val(m_doc, 1);
+    if (unlikely(!m_val)) return NULL;
+    
+    if (type == YYJSON_TYPE_ARR) {
+        yyjson_mut_val *val, *new_val;
+        yyjson_mut_arr_iter iter;
+        yyjson_mut_arr_iter_init(i_val, &iter);
+        m_val->tag = YYJSON_TYPE_ARR;
+        while ((val = yyjson_mut_arr_iter_next(&iter))) {
+            new_val = unsafe_yyjson_mut_ctn_mut_copy(m_doc, val);
+            if (unlikely(!yyjson_mut_arr_append(m_val, new_val))) return NULL;
+        }
+        return m_val;
+        
+    } else if (type == YYJSON_TYPE_OBJ) {
+        yyjson_mut_val *key, *val, *new_key, *new_val;
+        yyjson_mut_obj_iter iter;
+        yyjson_mut_obj_iter_init(i_val, &iter);
+        m_val->tag = YYJSON_TYPE_OBJ;
+        while ((key = yyjson_mut_obj_iter_next(&iter))) {
+            val = key->next;
+            new_key = unsafe_yyjson_mut_ctn_mut_copy(m_doc, key);
+            if (unlikely(!new_key)) return NULL;
+            new_val = unsafe_yyjson_mut_ctn_mut_copy(m_doc, val);
+            if (unlikely(!new_val)) return NULL;
+            unsafe_yyjson_mut_obj_add(m_val, new_key, new_val,
+                                      unsafe_yyjson_get_len(m_val));
+        }
+        return m_val;
+        
+    } else if (type == YYJSON_TYPE_STR){
+        usize len = unsafe_yyjson_get_len(i_val);
+        const char *str = unsafe_yyjson_mut_strncpy(m_doc, i_val->uni.str, len);
+        if (unlikely(!str)) return NULL;
+        m_val->tag = i_val->tag;
+        m_val->uni.str = str;
+        return m_val;
+        
+    } else {
+        m_val->tag = i_val->tag;
+        m_val->uni.u64 = i_val->uni.u64;
+        return m_val;
+    }
+}
 
+yyjson_api yyjson_mut_val *yyjson_mut_val_mut_copy(yyjson_mut_doc *m_doc,
+                                                   yyjson_mut_val *i_vals) {
+    if (m_doc && i_vals) {
+        return unsafe_yyjson_mut_ctn_mut_copy(m_doc, i_vals);
+    }
+    return NULL;
+}
+
+bool yyjson_mut_equals(yyjson_mut_val *lhs, yyjson_mut_val *rhs) {
+    yyjson_type type = yyjson_mut_get_type(lhs);
+    if (type != yyjson_mut_get_type(rhs)) return false;
+    
+    if (type == YYJSON_TYPE_NULL) {
+        return true;
+    }
+    if (type == YYJSON_TYPE_BOOL) {
+        return unsafe_yyjson_get_bool(lhs) == unsafe_yyjson_get_bool(rhs);
+    }
+    if (type == YYJSON_TYPE_NUM) {
+        yyjson_subtype lt, rt;
+        lt = unsafe_yyjson_get_subtype(lhs);
+        rt = unsafe_yyjson_get_subtype(rhs);
+        if (lt == rt) return lhs->uni.u64 == rhs->uni.u64;
+        if (lt == YYJSON_SUBTYPE_SINT && rt == YYJSON_SUBTYPE_UINT) {
+            if (lhs->uni.i64 >= 0 && lhs->uni.i64 == rhs->uni.i64) return true;
+            else return false;
+        }
+        if (lt == YYJSON_SUBTYPE_UINT && rt == YYJSON_SUBTYPE_SINT) {
+            if (rhs->uni.i64 >= 0 && lhs->uni.i64 == rhs->uni.i64) return true;
+            else return false;
+        }
+        return false;
+    }
+    if (type == YYJSON_TYPE_STR) {
+        usize len = unsafe_yyjson_get_len(lhs);
+        if (len != unsafe_yyjson_get_len(rhs)) return false;
+        return memcmp(lhs->uni.str, rhs->uni.str, len) == 0;
+    }
+    if (type == YYJSON_TYPE_ARR) {
+        yyjson_mut_val *lhs_val, *rhs_val;
+        yyjson_mut_arr_iter lhs_iter, rhs_iter;
+        usize len = unsafe_yyjson_get_len(lhs);
+        if (len != unsafe_yyjson_get_len(rhs)) return false;
+        if (len == 0) return true;
+        
+        yyjson_mut_arr_iter_init(lhs, &lhs_iter);
+        yyjson_mut_arr_iter_init(rhs, &rhs_iter);
+        while ((lhs_val = yyjson_mut_arr_iter_next(&lhs_iter)) &&
+               (rhs_val = yyjson_mut_arr_iter_next(&rhs_iter))) {
+            if (!yyjson_mut_equals(lhs_val, rhs_val)) return false;
+        }
+        return true;
+    }
+    if (type == YYJSON_TYPE_OBJ) {
+        yyjson_mut_val *key, *lhs_val, *rhs_val;
+        yyjson_mut_obj_iter lhs_iter, rhs_iter;
+        usize len = unsafe_yyjson_get_len(lhs);
+        if (len != unsafe_yyjson_get_len(rhs)) return false;
+        if (len == 0) return true;
+        
+        yyjson_mut_obj_iter_init(lhs, &lhs_iter);
+        yyjson_mut_obj_iter_init(rhs, &rhs_iter);
+        while ((key = yyjson_mut_obj_iter_next(&lhs_iter))) {
+            lhs_val = key->next;
+            rhs_val = yyjson_mut_obj_iter_getn(&rhs_iter, key->uni.str,
+                                               unsafe_yyjson_get_len(key));
+            if (!rhs_val)  return false;
+            if (!yyjson_mut_equals(lhs_val, rhs_val)) return false;
+        }
+        /* yyjson allows duplicate keys, so the check may be inaccurate */
+        return true;
+    }
+    
+    return false;
+}
 
 /*==============================================================================
  * JSON Pointer
@@ -1144,7 +1480,8 @@ static const bool pointer_char_table[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
 };
 
-static_inline bool pointer_read_index(const char *ptr, const char **end,
+static_inline bool pointer_read_index(const char *ptr,
+                                      const char **end,
                                       usize *idx) {
     u64 num;
     u32 i;
@@ -1185,7 +1522,7 @@ static_inline bool pointer_read_str(const char *ptr, const char **end,
 #undef skip_expr
         ptr += 8;
     }
-    distance = ptr - hdr;
+    distance = (usize)(ptr - hdr);
     if (likely(*ptr != '~')) {
         *end = ptr;
         *str = hdr;
@@ -1198,19 +1535,19 @@ static_inline bool pointer_read_str(const char *ptr, const char **end,
     dst += distance;
     ptr += 1;
     if (*ptr != '0' && *ptr != '1') return false;
-    *dst++ = (*ptr++ == '0' ? '~' : '/');
+    *dst++ = (char)(*ptr++ == '0' ? '~' : '/');
     while (true) {
         if (pointer_char_table[(u8)*ptr]) {
             *dst++ = *ptr++;
         } else if (*ptr != '~') {
             *end = ptr;
             *str = buf;
-            *len = dst - buf;
+            *len = (usize)(dst - buf);
             return true;
         } else {
             ptr++;
             if (*ptr != '0' && *ptr != '1') return false;
-            *dst++ = (*ptr++ == '0' ? '~' : '/');
+            *dst++ = (char)(*ptr++ == '0' ? '~' : '/');
         }
     }
 }
@@ -1304,11 +1641,72 @@ yyjson_api yyjson_mut_val *unsafe_yyjson_mut_get_pointer(yyjson_mut_val *val,
 
 
 /*==============================================================================
- * Power10 Lookup Table
+ * JSON Merge-Patch
  *============================================================================*/
 
-#if (!YYJSON_DISABLE_READER && !YYJSON_DISABLE_FP_READER) || \
-    (!YYJSON_DISABLE_WRITER && !YYJSON_DISABLE_FP_WRITER)
+yyjson_api yyjson_mut_val *yyjson_merge_patch(yyjson_mut_doc *doc,
+                                              yyjson_val *orig,
+                                              yyjson_val *patch) {
+    size_t idx, max;
+    yyjson_val *key, *orig_val, *patch_val, local_orig;
+    yyjson_mut_val *builder, *mut_key, *mut_val, *merged_val;
+    
+    if (unlikely(!yyjson_is_obj(patch))) {
+        return yyjson_val_mut_copy(doc, patch);
+    }
+    
+    builder = yyjson_mut_obj(doc);
+    if (unlikely(!builder)) return NULL;
+    
+    if (!yyjson_is_obj(orig)) {
+        orig = &local_orig;
+        orig->tag = builder->tag;
+        orig->uni = builder->uni;
+    }
+    
+    /* Merge items modified by the patch. */
+    yyjson_obj_foreach(patch, idx, max, key, patch_val) {
+        /* null indicates the field is removed. */
+        if (unsafe_yyjson_is_null(patch_val)) {
+            continue;
+        }
+        mut_key = yyjson_val_mut_copy(doc, key);
+        orig_val = yyjson_obj_getn(orig,
+                                   unsafe_yyjson_get_str(key),
+                                   unsafe_yyjson_get_len(key));
+        merged_val = yyjson_merge_patch(doc, orig_val, patch_val);
+        if (!yyjson_mut_obj_add(builder, mut_key, merged_val)) return NULL;
+    }
+    
+    /* Exit early, if orig is not contributing to the final result. */
+    if (orig == &local_orig) {
+        return builder;
+    }
+    
+    /* Copy over any items that weren't modified by the patch. */
+    yyjson_obj_foreach(orig, idx, max, key, orig_val) {
+        patch_val = yyjson_obj_getn(patch,
+                                    unsafe_yyjson_get_str(key),
+                                    unsafe_yyjson_get_len(key));
+        if (!patch_val) {
+            mut_key = yyjson_val_mut_copy(doc, key);
+            mut_val = yyjson_val_mut_copy(doc, orig_val);
+            if (!yyjson_mut_obj_add(builder, mut_key, mut_val)) return NULL;
+        }
+    }
+    
+    return builder;
+}
+
+
+
+/*==============================================================================
+ * Power10 Lookup Table
+ * These data are used by the floating-point number reader and writer.
+ *============================================================================*/
+
+#if (!YYJSON_DISABLE_READER || !YYJSON_DISABLE_WRITER) && \
+    (!YYJSON_DISABLE_FAST_FP_CONV)
 
 /** Minimum decimal exponent in pow10_sig_table. */
 #define POW10_SIG_TABLE_MIN_EXP -343
@@ -2094,32 +2492,33 @@ static_inline bool char_is_type(u8 c, char_type type) {
 
 /** Match a whitespace: ' ', '\\t', '\\n', '\\r'. */
 static_inline bool char_is_space(u8 c) {
-    return char_is_type(c, CHAR_TYPE_SPACE);
+    return char_is_type(c, (char_type)CHAR_TYPE_SPACE);
 }
 
 /** Match a whitespace or comment: ' ', '\\t', '\\n', '\\r', '/'. */
 static_inline bool char_is_space_or_comment(u8 c) {
-    return char_is_type(c, CHAR_TYPE_SPACE | CHAR_TYPE_COMMENT);
+    return char_is_type(c, (char_type)(CHAR_TYPE_SPACE | CHAR_TYPE_COMMENT));
 }
 
 /** Match a JSON number: '-', [0-9]. */
 static_inline bool char_is_number(u8 c) {
-    return char_is_type(c, CHAR_TYPE_NUMBER);
+    return char_is_type(c, (char_type)CHAR_TYPE_NUMBER);
 }
 
 /** Match a JSON container: '{', '['. */
 static_inline bool char_is_container(u8 c) {
-    return char_is_type(c, CHAR_TYPE_CONTAINER);
+    return char_is_type(c, (char_type)CHAR_TYPE_CONTAINER);
 }
 
 /** Match a stop character in ASCII string: '"', '\', [0x00-0x1F], [0x80-0xFF]*/
 static_inline bool char_is_ascii_stop(u8 c) {
-    return char_is_type(c, CHAR_TYPE_ESC_ASCII | CHAR_TYPE_NON_ASCII);
+    return char_is_type(c, (char_type)(CHAR_TYPE_ESC_ASCII |
+                                       CHAR_TYPE_NON_ASCII));
 }
 
 /** Match a line end character: '\\n', '\\r', '\0'*/
 static_inline bool char_is_line_end(u8 c) {
-    return char_is_type(c, CHAR_TYPE_LINE_END);
+    return char_is_type(c, (char_type)CHAR_TYPE_LINE_END);
 }
 
 
@@ -2176,39 +2575,40 @@ static_inline bool digi_is_type(u8 d, digi_type type) {
 
 /** Match a sign: '+', '-' */
 static_inline bool digi_is_sign(u8 d) {
-    return digi_is_type(d, DIGI_TYPE_POS | DIGI_TYPE_NEG);
+    return digi_is_type(d, (digi_type)(DIGI_TYPE_POS | DIGI_TYPE_NEG));
 }
 
 /** Match a none zero digit: [1-9] */
 static_inline bool digi_is_nonzero(u8 d) {
-    return digi_is_type(d, DIGI_TYPE_NONZERO);
+    return digi_is_type(d, (digi_type)DIGI_TYPE_NONZERO);
 }
 
 /** Match a digit: [0-9] */
 static_inline bool digi_is_digit(u8 d) {
-    return digi_is_type(d, DIGI_TYPE_ZERO | DIGI_TYPE_NONZERO);
+    return digi_is_type(d, (digi_type)(DIGI_TYPE_ZERO | DIGI_TYPE_NONZERO));
 }
 
 /** Match an exponent sign: 'e', 'E'. */
 static_inline bool digi_is_exp(u8 d) {
-    return digi_is_type(d, DIGI_TYPE_EXP);
+    return digi_is_type(d, (digi_type)DIGI_TYPE_EXP);
 }
 
 /** Match a floating point indicator: '.', 'e', 'E'. */
 static_inline bool digi_is_fp(u8 d) {
-    return digi_is_type(d, DIGI_TYPE_DOT | DIGI_TYPE_EXP);
+    return digi_is_type(d, (digi_type)(DIGI_TYPE_DOT | DIGI_TYPE_EXP));
 }
 
 /** Match a digit or floating point indicator: [0-9], '.', 'e', 'E'. */
 static_inline bool digi_is_digit_or_fp(u8 d) {
-    return digi_is_type(d, DIGI_TYPE_ZERO | DIGI_TYPE_NONZERO |
-                           DIGI_TYPE_DOT | DIGI_TYPE_EXP);
+    return digi_is_type(d, (digi_type)(DIGI_TYPE_ZERO | DIGI_TYPE_NONZERO |
+                                       DIGI_TYPE_DOT | DIGI_TYPE_EXP));
 }
 
 
 
 /*==============================================================================
  * Hex Character Reader
+ * This function is used by JSON reader to read escaped characters.
  *============================================================================*/
 
 /**
@@ -2254,7 +2654,7 @@ static const u8 hex_conv_table[256] = {
 
 /**
  Scans an escaped character sequence as a UTF-16 code unit (branchless).
- e.g. "\u005C" should pass "005C" as `cur`.
+ e.g. "\\u005C" should pass "005C" as `cur`.
  
  This requires the string has 4-byte zero padding.
  */
@@ -2274,10 +2674,13 @@ static_inline bool read_hex_u16(const u8 *cur, u16 *val) {
 
 /*==============================================================================
  * JSON Reader Utils
+ * These functions are used by JSON reader to read literals and comments.
  *============================================================================*/
 
 /** Read 'true' literal, '*cur' should be 't'. */
-static_inline bool read_true(u8 *cur, u8 **end, yyjson_val *val) {
+static_inline bool read_true(u8 **ptr, yyjson_val *val) {
+    u8 *cur = *ptr;
+    u8 **end = ptr;
     if (likely(byte_match_4(cur, "true"))) {
         val->tag = YYJSON_TYPE_BOOL | YYJSON_SUBTYPE_TRUE;
         *end = cur + 4;
@@ -2287,7 +2690,9 @@ static_inline bool read_true(u8 *cur, u8 **end, yyjson_val *val) {
 }
 
 /** Read 'false' literal, '*cur' should be 'f'. */
-static_inline bool read_false(u8 *cur, u8 **end, yyjson_val *val) {
+static_inline bool read_false(u8 **ptr, yyjson_val *val) {
+    u8 *cur = *ptr;
+    u8 **end = ptr;
     if (likely(byte_match_4(cur + 1, "alse"))) {
         val->tag = YYJSON_TYPE_BOOL | YYJSON_SUBTYPE_FALSE;
         *end = cur + 5;
@@ -2297,7 +2702,9 @@ static_inline bool read_false(u8 *cur, u8 **end, yyjson_val *val) {
 }
 
 /** Read 'null' literal, '*cur' should be 'n'. */
-static_inline bool read_null(u8 *cur, u8 **end, yyjson_val *val) {
+static_inline bool read_null(u8 **ptr, yyjson_val *val) {
+    u8 *cur = *ptr;
+    u8 **end = ptr;
     if (likely(byte_match_4(cur, "null"))) {
         val->tag = YYJSON_TYPE_NULL;
         *end = cur + 4;
@@ -2307,8 +2714,11 @@ static_inline bool read_null(u8 *cur, u8 **end, yyjson_val *val) {
 }
 
 /** Read 'Inf' or 'Infinity' literal (ignoring case). */
-static_inline bool read_inf(bool sign, u8 *cur, u8 **end, yyjson_val *val) {
-#if !YYJSON_DISABLE_INF_AND_NAN_READER
+static_inline bool read_inf(bool sign, u8 **ptr, u8 **pre, yyjson_val *val) {
+#if !YYJSON_DISABLE_NON_STANDARD
+    u8 *hdr = *ptr - sign;
+    u8 *cur = *ptr;
+    u8 **end = ptr;
     if ((cur[0] == 'I' || cur[0] == 'i') &&
         (cur[1] == 'N' || cur[1] == 'n') &&
         (cur[2] == 'F' || cur[2] == 'f')) {
@@ -2317,12 +2727,21 @@ static_inline bool read_inf(bool sign, u8 *cur, u8 **end, yyjson_val *val) {
             (cur[5] == 'I' || cur[5] == 'i') &&
             (cur[6] == 'T' || cur[6] == 't') &&
             (cur[7] == 'Y' || cur[7] == 'y')) {
-            *end = cur + 8;
+            cur += 8;
         } else {
-            *end = cur + 3;
+            cur += 3;
         }
-        val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL;
-        val->uni.u64 = f64_raw_get_inf(sign);
+        *end = cur;
+        if (pre) {
+            /* add null-terminator for previous raw string */
+            if (*pre) **pre = '\0';
+            *pre = cur;
+            val->tag = ((u64)(cur - hdr) << YYJSON_TAG_BIT) | YYJSON_TYPE_RAW;
+            val->uni.str = (const char *)hdr;
+        } else {
+            val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL;
+            val->uni.u64 = f64_raw_get_inf(sign);
+        }
         return true;
     }
 #endif
@@ -2330,14 +2749,26 @@ static_inline bool read_inf(bool sign, u8 *cur, u8 **end, yyjson_val *val) {
 }
 
 /** Read 'NaN' literal (ignoring case). */
-static_inline bool read_nan(bool sign, u8 *cur, u8 **end, yyjson_val *val) {
-#if !YYJSON_DISABLE_INF_AND_NAN_READER
+static_inline bool read_nan(bool sign, u8 **ptr, u8 **pre, yyjson_val *val) {
+#if !YYJSON_DISABLE_NON_STANDARD
+    u8 *hdr = *ptr - sign;
+    u8 *cur = *ptr;
+    u8 **end = ptr;
     if ((cur[0] == 'N' || cur[0] == 'n') &&
         (cur[1] == 'A' || cur[1] == 'a') &&
         (cur[2] == 'N' || cur[2] == 'n')) {
-        *end = cur + 3;
-        val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL;
-        val->uni.u64 = f64_raw_get_nan(sign);
+        cur += 3;
+        *end = cur;
+        if (pre) {
+            /* add null-terminator for previous raw string */
+            if (*pre) **pre = '\0';
+            *pre = cur;
+            val->tag = ((u64)(cur - hdr) << YYJSON_TAG_BIT) | YYJSON_TYPE_RAW;
+            val->uni.str = (const char *)hdr;
+        } else {
+            val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL;
+            val->uni.u64 = f64_raw_get_nan(sign);
+        }
         return true;
     }
 #endif
@@ -2345,13 +2776,86 @@ static_inline bool read_nan(bool sign, u8 *cur, u8 **end, yyjson_val *val) {
 }
 
 /** Read 'Inf', 'Infinity' or 'NaN' literal (ignoring case). */
-static_inline bool read_inf_or_nan(bool sign, u8 *cur, u8 **end,
+static_inline bool read_inf_or_nan(bool sign, u8 **ptr, u8 **pre,
                                    yyjson_val *val) {
-#if !YYJSON_DISABLE_INF_AND_NAN_READER
-    if (read_inf(sign, cur, end, val)) return true;
-    if (read_nan(sign, cur, end, val)) return true;
+#if !YYJSON_DISABLE_NON_STANDARD
+    if (read_inf(sign, ptr, pre, val)) return true;
+    if (read_nan(sign, ptr, pre, val)) return true;
 #endif
     return false;
+}
+
+/** Read a JSON number as raw string. */
+static_noinline bool read_number_raw(u8 **ptr,
+                                     u8 **pre,
+                                     bool ext,
+                                     yyjson_val *val,
+                                     const char **msg) {
+    
+#define return_err(_pos, _msg) do { \
+    *msg = _msg; \
+    *end = _pos; \
+    return false; \
+} while (false)
+    
+#define return_raw() do { \
+    val->tag = ((u64)(cur - hdr) << YYJSON_TAG_BIT) | YYJSON_TYPE_RAW; \
+    val->uni.str = (const char *)hdr; \
+    *pre = cur; *end = cur; return true; \
+} while (false)
+    
+    u8 *hdr = *ptr;
+    u8 *cur = *ptr;
+    u8 **end = ptr;
+    
+    /* add null-terminator for previous raw string */
+    if (*pre) **pre = '\0';
+    
+    /* skip sign */
+    cur += (*cur == '-');
+    
+    /* read first digit, check leading zero */
+    if (unlikely(!digi_is_digit(*cur))) {
+        if (unlikely(ext)) {
+            if (read_inf_or_nan(*hdr == '-', &cur, pre, val)) return_raw();
+        }
+        return_err(cur - 1, "no digit after minus sign");
+    }
+    
+    /* read integral part */
+    if (*cur == '0') {
+        cur++;
+        if (unlikely(digi_is_digit(*cur))) {
+            return_err(cur - 1, "number with leading zero is not allowed");
+        }
+        if (!digi_is_fp(*cur)) return_raw();
+    } else {
+        while (digi_is_digit(*cur)) cur++;
+        if (!digi_is_fp(*cur)) return_raw();
+    }
+    
+    /* read fraction part */
+    if (*cur == '.') {
+        cur++;
+        if (!digi_is_digit(*cur++)) {
+            return_err(cur - 1, "no digit after decimal point");
+        }
+        while (digi_is_digit(*cur)) cur++;
+    }
+    
+    /* read exponent part */
+    if (digi_is_exp(*cur)) {
+        cur += 1 + digi_is_sign(cur[1]);
+        if (!digi_is_digit(*cur++)) {
+            return_err(cur - 1, "no digit after exponent sign");
+        }
+        while (digi_is_digit(*cur)) cur++;
+    }
+    
+    return_raw();
+    
+#undef return_err
+#undef return_raw
 }
 
 /**
@@ -2362,8 +2866,10 @@ static_inline bool read_inf_or_nan(bool sign, u8 *cur, u8 **end,
     2. A multiline comment is not closed. The 'end' pointer is set as the head
        of this comment block.
  */
-static_noinline bool skip_spaces_and_comments(u8 *cur, u8 **end) {
-    u8 *hdr = cur;
+static_noinline bool skip_spaces_and_comments(u8 **ptr) {
+    u8 *hdr = *ptr;
+    u8 *cur = *ptr;
+    u8 **end = ptr;
     while (true) {
         if (byte_match_2(cur, "/*")) {
             hdr = cur;
@@ -2399,14 +2905,14 @@ static_noinline bool skip_spaces_and_comments(u8 *cur, u8 **end) {
 
 
 
-#if YYJSON_HAS_IEEE_754 && !YYJSON_DISABLE_FP_READER
+#if YYJSON_HAS_IEEE_754 && !YYJSON_DISABLE_FAST_FP_CONV /* FP_READER */
 
 /*==============================================================================
  * BigInt For Floating Point Number Reader
  *
- * The bigint algorithm is used by floating-point number parser to get correctly
+ * The bigint algorithm is used by floating-point number reader to get correctly
  * rounded result for numbers with lots of digits. This part of code is rarely
- * used for normal JSON.
+ * used for common numbers.
  *============================================================================*/
 
 /** Maximum exponent of exact pow10 */
@@ -2525,7 +3031,7 @@ static_inline i32 bigint_cmp(bigint *a, bigint *b) {
     u32 idx = a->used;
     if (a->used < b->used) return -1;
     if (a->used > b->used) return +1;
-    while (idx --> 0) {
+    while (idx-- > 0) {
         u64 av = a->bits[idx];
         u64 bv = b->bits[idx];
         if (av < bv) return -1;
@@ -2554,7 +3060,7 @@ static_noinline void bigint_set_buf(bigint *big, u64 sig, i32 *exp,
         return;
         
     } else {
-        /* some digits was cut, read them from 'sig_cut' to 'sig_end' */
+        /* some digits were cut, read them from 'sig_cut' to 'sig_end' */
         u8 *hdr = sig_cut;
         u8 *cur = hdr;
         u32 len = 0;
@@ -2576,7 +3082,7 @@ static_noinline void bigint_set_buf(bigint *big, u64 sig, i32 *exp,
         big->bits[0] = sig;
         while (cur < sig_end) {
             if (likely(cur != dot_pos)) {
-                val = val * 10 + (*cur++ - '0');
+                val = val * 10 + (u8)(*cur++ - '0');
                 len++;
                 if (unlikely(cur == sig_end && dig_big_cut)) {
                     /* The last digit must be non-zero,    */
@@ -2584,7 +3090,7 @@ static_noinline void bigint_set_buf(bigint *big, u64 sig, i32 *exp,
                     val = val - (val % 10) + 1;
                 }
                 if (len == U64_SAFE_DIG || cur == sig_end) {
-                    bigint_mul_pow10(big, len);
+                    bigint_mul_pow10(big, (i32)len);
                     bigint_add_u64(big, val);
                     val = 0;
                     len = 0;
@@ -2606,6 +3112,7 @@ static_noinline void bigint_set_buf(bigint *big, u64 sig, i32 *exp,
 typedef struct diy_fp {
     u64 sig; /* significand */
     i32 exp; /* exponent, base 2 */
+    i32 pad; /* padding, useless */
 } diy_fp;
 
 /** Get cached rounded diy_fp with pow(10, e) The input value must in range
@@ -2638,7 +3145,7 @@ static_inline u64 diy_fp_to_ieee_raw(diy_fp fp) {
     lz_bits = u64_lz_bits(sig);
     sig <<= lz_bits;
     sig >>= F64_BITS - F64_SIG_FULL_BITS;
-    exp -= lz_bits;
+    exp -= (i32)lz_bits;
     exp += F64_BITS - F64_SIG_FULL_BITS;
     exp += F64_SIG_BITS;
     
@@ -2676,49 +3183,46 @@ static const f64 f64_pow10_table[] = {
 /**
  Read a JSON number.
  
- 1. This function assume that the floating-point stack is based on IEEE-754.
+ 1. This function assume that the floating-point number is in IEEE-754 format.
  2. This function support uint64/int64/double number. If an integer number
     cannot fit in uint64/int64, it will returns as a double number. If a double
     number is infinite, the return value is based on flag.
- 3. This function does not support 'nan' or 'inf' literal.
- 4. This function (with inline attribute) may generate a lot of instructions.
+ 3. This function (with inline attribute) may generate a lot of instructions.
  */
-static_inline bool read_number(u8 *cur,
-                               u8 **end,
-                               yyjson_read_flag flg,
+static_inline bool read_number(u8 **ptr,
+                               u8 **pre,
+                               bool ext,
                                yyjson_val *val,
                                const char **msg) {
-    
-#define has_flag(_flag) unlikely((flg & YYJSON_READ_##_flag) != 0)
     
 #define return_err(_pos, _msg) do { \
     *msg = _msg; \
     *end = _pos; \
     return false; \
-} while(false)
+} while (false)
     
 #define return_i64(_v) do { \
-    val->tag = YYJSON_TYPE_NUM | ((u8)sign << 3); \
+    val->tag = YYJSON_TYPE_NUM | (u8)((u8)sign << 3); \
     val->uni.u64 = (u64)(sign ? (u64)(~(_v) + 1) : (u64)(_v)); \
     *end = cur; return true; \
-} while(false)
+} while (false)
     
 #define return_f64(_v) do { \
     val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL; \
     val->uni.f64 = sign ? -(f64)(_v) : (f64)(_v); \
     *end = cur; return true; \
-} while(false)
+} while (false)
     
 #define return_f64_raw(_v) do { \
     val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL; \
     val->uni.u64 = ((u64)sign << 63) | (u64)(_v); \
     *end = cur; return true; \
-} while(false)
+} while (false)
     
 #define return_inf() do { \
-    if (has_flag(ALLOW_INF_AND_NAN)) return_f64_raw(F64_RAW_INF); \
+    if (unlikely(ext)) return_f64_raw(F64_RAW_INF); \
     else return_err(hdr, "number is infinity when parsed as double"); \
-} while(false)
+} while (false)
     
     u8 *sig_cut = NULL; /* significant part cutting position for long number */
     u8 *sig_end = NULL; /* significant part ending position */
@@ -2727,20 +3231,33 @@ static_inline bool read_number(u8 *cur,
     u64 sig = 0; /* significant part of the number */
     i32 exp = 0; /* exponent part of the number */
     
-    bool exp_sign = false; /* temporary exponent sign from literal part */
+    bool exp_sign; /* temporary exponent sign from literal part */
     i64 exp_sig = 0; /* temporary exponent number from significant part */
     i64 exp_lit = 0; /* temporary exponent number from exponent literal part */
     u64 num; /* temporary number for reading */
     u8 *tmp; /* temporary cursor for reading */
     
-    u8 *hdr = cur;
-    bool sign = (*hdr == '-');
+    u8 *hdr = *ptr;
+    u8 *cur = *ptr;
+    u8 **end = ptr;
+    bool sign;
+    
+    /* read number as raw string if has flag */
+    if (unlikely(pre)) {
+        return read_number_raw(ptr, pre, ext, val, msg);
+    }
+    
+    sign = (*hdr == '-');
     cur += sign;
     
+    /* begin with a leading zero or non-digit */
     if (unlikely(!digi_is_nonzero(*cur))) { /* 0 or non-digit char */
         if (unlikely(*cur != '0')) { /* non-digit char */
-            if (has_flag(ALLOW_INF_AND_NAN)) {
-                if (read_inf_or_nan(sign, cur, end, val)) return true;
+            if (unlikely(ext)) {
+                if (read_inf_or_nan(sign, &cur, pre, val)) {
+                    *end = cur;
+                    return true;
+                }
             }
             return_err(cur - 1, "no digit after minus sign");
         }
@@ -2785,7 +3302,7 @@ static_inline bool read_number(u8 *cur,
             else goto digi_sepr_i;
          }
      */
-#if yyjson_is_real_gcc
+#if YYJSON_IS_REAL_GCC
 #define expr_intg(i) \
     if (likely((num = (u64)(cur[i] - (u8)'0')) <= 9)) sig = num + sig * 10; \
     else { __asm volatile("":"=m"(cur[i])::); goto digi_sepr_##i; }
@@ -2797,12 +3314,17 @@ static_inline bool read_number(u8 *cur,
     repeat_in_1_18(expr_intg);
 #undef expr_intg
     
+    
     cur += 19; /* skip continuous 19 digits */
     if (!digi_is_digit_or_fp(*cur)) {
-        if (sign && (sig > ((u64)1 << 63))) return_f64(sig); /* overflow */
+        /* this number is an integer consisting of 19 digits */
+        if (sign && (sig > ((u64)1 << 63))) { /* overflow */
+            return_f64(normalized_u64_to_f64(sig));
+        }
         return_i64(sig);
     }
     goto digi_intg_more; /* read more digits in integral part */
+    
     
     /* process first non-digit character */
 #define expr_sepr(i) \
@@ -2814,8 +3336,9 @@ static_inline bool read_number(u8 *cur,
     repeat_in_1_18(expr_sepr)
 #undef expr_sepr
     
+    
     /* read fraction part */
-#if yyjson_is_real_gcc
+#if YYJSON_IS_REAL_GCC
 #define expr_frac(i) \
     digi_frac_##i: \
     if (likely((num = (u64)(cur[i + 1] - (u8)'0')) <= 9)) \
@@ -2835,6 +3358,7 @@ static_inline bool read_number(u8 *cur,
     if (!digi_is_digit(*cur)) goto digi_frac_end; /* fraction part end */
     goto digi_frac_more; /* read more digits in fraction part */
     
+    
     /* significant part end */
 #define expr_stop(i) \
     digi_stop_##i: \
@@ -2843,18 +3367,20 @@ static_inline bool read_number(u8 *cur,
     repeat_in_1_18(expr_stop)
 #undef expr_stop
     
-digi_intg_more: /* read more digits in integral part */
+    
+    /* read more digits in integral part */
+digi_intg_more:
     if (digi_is_digit(*cur)) {
         if (!digi_is_digit_or_fp(cur[1])) {
-            /* this number is an integer with 20 digits */
+            /* this number is an integer consisting of 20 digits */
             num = (u64)(*cur - '0');
             if ((sig < (U64_MAX / 10)) ||
                 (sig == (U64_MAX / 10) && num <= (U64_MAX % 10))) {
                 sig = num + sig * 10;
                 cur++;
                 /* convert to double if overflow */
-                if (sign && (sig > ((u64)1 << 63))) return_f64(sig);
-                else return_i64(sig);
+                if (sign) return_f64(normalized_u64_to_f64(sig));
+                return_i64(sig);
             }
         }
     }
@@ -2871,7 +3397,9 @@ digi_intg_more: /* read more digits in integral part */
         }
     }
     
-digi_frac_more: /* read more digits in fraction part */
+    
+    /* read more digits in fraction part */
+digi_frac_more:
     sig_cut = cur; /* too large to fit in u64, excess digits need to be cut */
     sig += (*cur >= '5'); /* round */
     while (digi_is_digit(*++cur));
@@ -2899,7 +3427,9 @@ digi_frac_more: /* read more digits in fraction part */
     if (digi_is_exp(*cur)) goto digi_exp_more;
     goto digi_exp_finish;
     
-digi_frac_end: /* fraction part end */
+    
+    /* fraction part end */
+digi_frac_end:
     if (unlikely(dot_pos + 1 == cur)) {
         return_err(cur - 1, "no digit after decimal point");
     }
@@ -2915,7 +3445,9 @@ digi_frac_end: /* fraction part end */
         goto digi_exp_more;
     }
     
-digi_exp_more: /* read exponent part */
+    
+    /* read exponent part */
+digi_exp_more:
     exp_sign = (*++cur == '-');
     cur += digi_is_sign(*cur);
     if (unlikely(!digi_is_digit(*cur))) {
@@ -2926,7 +3458,7 @@ digi_exp_more: /* read exponent part */
     /* read exponent literal */
     tmp = cur;
     while (digi_is_digit(*cur)) {
-        exp_lit = (*cur++ - '0') + (u64)exp_lit * 10;
+        exp_lit = (i64)((u8)(*cur++ - '0') + (u64)exp_lit * 10);
     }
     if (unlikely(cur - tmp >= U64_SAFE_DIG)) {
         if (exp_sign) {
@@ -2937,7 +3469,9 @@ digi_exp_more: /* read exponent part */
     }
     exp_sig += exp_sign ? -exp_lit : exp_lit;
     
-digi_exp_finish: /* validate exponent value */
+    
+    /* validate exponent value */
+digi_exp_finish:
     if (unlikely(exp_sig < F64_MIN_DEC_EXP - 19)) {
         return_f64_raw(0); /* underflow */
     }
@@ -2946,7 +3480,9 @@ digi_exp_finish: /* validate exponent value */
     }
     exp = (i32)exp_sig;
     
-digi_finish: /* all digit read finished */
+    
+    /* all digit read finished */
+digi_finish:
     
     /*
      Fast path 1:
@@ -3016,7 +3552,7 @@ digi_finish: /* all digit read finished */
          `lo2` + `unknown` may get a carry bit and may affect `hi2`, the max
          value of `hi2` is 0xFFFFFFFFFFFFFFFE, so `hi2` will not overflow.
          
-         `lo` + `hi2` may alse get a carry bit and may affect `hi`, but only
+         `lo` + `hi2` may also get a carry bit and may affect `hi`, but only
          the highest significant 53 bits of `hi` is needed. If there is a 0
          in the lower bits of `hi`, then all the following bits can be dropped.
          
@@ -3041,7 +3577,7 @@ digi_finish: /* all digit read finished */
         /* normalize and multiply */
         lz = u64_lz_bits(sig);
         sig1 = sig << lz;
-        exp2 -= lz;
+        exp2 -= (i32)lz;
         u128_mul(sig1, sig2, &hi, &lo);
         
         /*
@@ -3067,7 +3603,7 @@ digi_finish: /* all digit read finished */
             /*
              (bits == 0 || bits == 0x1FF)
              The `bits` is filled with all `0` or all `1`, so we need to check
-             more lower bits with another 64-bit multiplication.
+             lower bits with another 64-bit multiplication.
              */
             u128_mul(sig1, sig2_ext, &hi2, &lo2);
             
@@ -3090,7 +3626,7 @@ digi_finish: /* all digit read finished */
             /* normalize */
             lz = hi < ((u64)1 << 63);
             hi <<= lz;
-            exp2 -= lz;
+            exp2 -= (i32)lz;
             exp2 += 64;
             
             /* test the bit 54 and get rounding direction */
@@ -3149,7 +3685,7 @@ digi_finish: /* all digit read finished */
         /* normalize */
         bits = u64_lz_bits(fp.sig);
         fp.sig <<= bits;
-        fp.exp -= bits;
+        fp.exp -= (i32)bits;
         fp_err <<= bits;
         
         /* multiply and add error */
@@ -3159,7 +3695,7 @@ digi_finish: /* all digit read finished */
         /* normalize */
         bits = u64_lz_bits(fp.sig);
         fp.sig <<= bits;
-        fp.exp -= bits;
+        fp.exp -= (i32)bits;
         fp_err <<= bits;
         
         /* effective significand */
@@ -3178,15 +3714,15 @@ digi_finish: /* all digit read finished */
             i32 shr = (precision_digits_count + ERR_ULP_LOG) - DIY_SIG_BITS + 1;
             fp.sig >>= shr;
             fp.exp += shr;
-            fp_err = (fp_err >> shr) + 1 + ERR_ULP;
+            fp_err = (fp_err >> shr) + 1 + (u32)ERR_ULP;
             precision_digits_count -= shr;
         }
         
         /* half way */
         precision_bits = fp.sig & (((u64)1 << precision_digits_count) - 1);
-        precision_bits *= ERR_ULP;
+        precision_bits *= (u32)ERR_ULP;
         half_way = (u64)1 << (precision_digits_count - 1);
-        half_way *= ERR_ULP;
+        half_way *= (u32)ERR_ULP;
         
         /* rounding */
         fp.sig >>= precision_digits_count;
@@ -3253,46 +3789,63 @@ digi_finish: /* all digit read finished */
 
 /**
  Read a JSON number.
- This is a fallback function if the custom number parser is disabled.
+ This is a fallback function if the custom number reader is disabled.
  This function use libc's strtod() to read floating-point number.
  */
-static_noinline bool read_number(u8 *cur,
-                                 u8 **end,
-                                 yyjson_read_flag flg,
+static_noinline bool read_number(u8 **ptr,
+                                 u8 **pre,
+                                 bool ext,
                                  yyjson_val *val,
                                  const char **msg) {
     
-#define has_flag(_flag) unlikely((flg & YYJSON_READ_##_flag) != 0)
-
 #define return_err(_pos, _msg) do { \
     *msg = _msg; \
     *end = _pos; \
     return false; \
-} while(false)
+} while (false)
     
 #define return_i64(_v) do { \
-    val->tag = YYJSON_TYPE_NUM | ((u8)sign << 3); \
+    val->tag = YYJSON_TYPE_NUM | (u64)((u8)sign << 3); \
     val->uni.u64 = (u64)(sign ? (u64)(~(_v) + 1) : (u64)(_v)); \
     *end = cur; return true; \
-} while(false)
+} while (false)
     
 #define return_f64(_v) do { \
     val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL; \
     val->uni.f64 = sign ? -(f64)(_v) : (f64)(_v); \
     *end = cur; return true; \
-} while(false)
+} while (false)
+    
+#define return_f64_raw(_v) do { \
+    val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL; \
+    val->uni.u64 = ((u64)sign << 63) | (u64)(_v); \
+    *end = cur; return true; \
+} while (false)
     
     u64 sig, num;
-    u8 *hdr = cur;
-    bool sign = (*hdr == '-');
+    u8 *hdr = *ptr;
+    u8 *cur = *ptr;
+    u8 **end = ptr;
+    u8 *dot = NULL;
+    u8 *f64_end = NULL;
+    bool sign;
     
+    /* read number as raw string if has flag */
+    if (unlikely(pre)) {
+        return read_number_raw(ptr, pre, ext, val, msg);
+    }
+    
+    sign = (*hdr == '-');
     cur += sign;
-    sig = *cur - '0';
+    sig = (u8)(*cur - '0');
     
     /* read first digit, check leading zero */
     if (unlikely(!digi_is_digit(*cur))) {
-        if (has_flag(ALLOW_INF_AND_NAN)) {
-            if (read_inf_or_nan(sign, cur, end, val)) return true;
+        if (unlikely(ext)) {
+            if (read_inf_or_nan(sign, &cur, pre, val)) {
+                *end = cur;
+                return true;
+            }
         }
         return_err(cur - 1, "no digit after minus sign");
     }
@@ -3316,13 +3869,13 @@ static_noinline bool read_number(u8 *cur,
     cur += 19;
     if (digi_is_digit(cur[0]) && !digi_is_digit_or_fp(cur[1])) {
         /* this number is an integer consisting of 20 digits */
-        num = *cur - '0';
+        num = (u8)(*cur - '0');
         if ((sig < (U64_MAX / 10)) ||
             (sig == (U64_MAX / 10) && num <= (U64_MAX % 10))) {
             sig = num + sig * 10;
             cur++;
-            if (sign && (sig > ((u64)1 << 63))) return_f64(sig);
-            else return_i64(sig);
+            if (sign) return_f64(normalized_u64_to_f64(sig));
+            return_i64(sig);
         }
     }
     
@@ -3330,7 +3883,9 @@ intg_end:
     /* continuous digits ended */
     if (!digi_is_digit_or_fp(*cur)) {
         /* this number is an integer consisting of 1 to 19 digits */
-        if (sign && (sig > ((u64)1 << 63))) return_f64(sig);
+        if (sign && (sig > ((u64)1 << 63))) {
+            return_f64(normalized_u64_to_f64(sig));
+        }
         return_i64(sig);
     }
     
@@ -3339,6 +3894,7 @@ read_double:
     while (digi_is_digit(*cur)) cur++;
     if (*cur == '.') {
         /* skip fraction part */
+        dot = cur;
         cur++;
         if (!digi_is_digit(*cur++)) {
             return_err(cur - 1, "no digit after decimal point");
@@ -3355,14 +3911,32 @@ read_double:
     }
     
     /*
-     We use libc's strtod() to read the number as a double value.
-     The format of this number has been verified, so we don't need the endptr.
+     libc's strtod() is used to parse the floating-point number.
+     
      Note that the decimal point character used by strtod() is locale-dependent,
      and the rounding direction may affected by fesetround().
+     
+     For currently known locales, (en, zh, ja, ko, am, he, hi) use '.' as the
+     decimal point, while other locales use ',' as the decimal point.
+     
+     Here strtod() is called twice for different locales, but if another thread
+     happens calls setlocale() between two strtod(), parsing may still fail.
      */
-    val->uni.f64 = strtod((const char *)hdr, NULL);
-    if (unlikely(!f64_isfinite(val->uni.f64)) && !has_flag(ALLOW_INF_AND_NAN)) {
-        return_err(hdr, "number is infinity when parsed as double");
+    val->uni.f64 = strtod((const char *)hdr, (char **)&f64_end);
+    if (unlikely(f64_end != cur)) {
+        bool cut = (*cur == ',');
+        if (dot) *dot = ',';
+        if (cut) *cur = ' ';
+        val->uni.f64 = strtod((const char *)hdr, (char **)&f64_end);
+        if (cut) *cur = ',';
+        if (unlikely(f64_end != cur)) {
+            return_err(hdr, "strtod() failed to parse the number");
+        }
+    }
+    if (unlikely(val->uni.f64 == HUGE_VAL || val->uni.f64 == -HUGE_VAL)) {
+        if (!ext) {
+            return_err(hdr, "number is infinity when parsed as double");
+        }
     }
     val->tag = YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL;
     *end = cur;
@@ -3384,14 +3958,12 @@ read_double:
 
 /**
  Read a JSON string.
- @param cur The head of string before '"' prefix.
- @param end The end of string after '"' suffix.
+ @param ptr The head pointer of string before '"' prefix (inout).
  @param val The string value to be written.
  @param msg The error message pointer.
- @return Whether succeed.
+ @return Whether success.
  */
-static_inline bool read_string(u8 *cur,
-                               u8 **end,
+static_inline bool read_string(u8 **ptr,
                                yyjson_val *val,
                                const char **msg) {
     
@@ -3501,16 +4073,16 @@ static_inline bool read_string(u8 *cur,
     
 #define is_valid_seq_1(uni) \
     ((uni & b1_mask) == b1_patt)
-
+    
 #define is_valid_seq_2(uni) \
     ((uni & b2_mask) == b2_patt) && \
     ((uni & b2_requ))
-
+    
 #define is_valid_seq_3(uni) \
     ((uni & b3_mask) == b3_patt) && \
     ((tmp = (uni & b3_requ))) && \
     ((tmp != b3_erro))
-
+    
 #define is_valid_seq_4(uni) \
     ((uni & b4_mask) == b4_patt) && \
     ((tmp = (uni & b4_requ))) && \
@@ -3520,8 +4092,10 @@ static_inline bool read_string(u8 *cur,
     *msg = _msg; \
     *end = _end; \
     return false; \
-} while(false);
+} while (false);
     
+    u8 *cur = *ptr;
+    u8 **end = ptr;
     u8 *src = ++cur, *dst, *pos;
     u16 hi, lo;
     u32 uni, tmp;
@@ -3559,14 +4133,16 @@ skip_ascii_begin:
 #undef expr_stop
     
 skip_ascii_end:
-
+    
     /*
      GCC may store src[i] in a register at each line of expr_jump(i) above.
      These instructions are useless and will degrade performance.
      This inline asm is a hint for gcc: "the memory has been modified,
      do not cache it".
+     
+     MSVC, Clang, ICC can generate expected instructions without this hint.
      */
-#if yyjson_is_real_gcc
+#if YYJSON_IS_REAL_GCC
     __asm volatile("":"=m"(*src)::);
 #endif
     if (likely(*src == '"')) {
@@ -3679,7 +4255,7 @@ copy_ascii:
             *dst++ = *src++;
          });
      */
-#if yyjson_is_real_gcc
+#if YYJSON_IS_REAL_GCC
 #   define expr_jump(i) \
     if (likely(!(char_is_ascii_stop(src[i])))) {} \
     else { __asm volatile("":"=m"(src[i])::); goto copy_ascii_stop_##i; }
@@ -3827,7 +4403,7 @@ copy_utf8:
  * JSON Reader Implementation
  *
  * We use goto statements to build the finite state machine (FSM).
- * The FSM's state was hold by program counter (PC) and the 'goto' make the
+ * The FSM's state was held by program counter (PC) and the 'goto' make the
  * state transitions.
  *============================================================================*/
 
@@ -3843,17 +4419,17 @@ static_noinline yyjson_doc *read_root_single(u8 *hdr,
     
 #define return_err(_pos, _code, _msg) do { \
     if (_pos >= end) { \
-        err->pos = end - hdr; \
+        err->pos = (usize)(end - hdr); \
         err->code = YYJSON_READ_ERROR_UNEXPECTED_END; \
         err->msg = "unexpected end of data"; \
     } else { \
-        err->pos = _pos - hdr; \
+        err->pos = (usize)(_pos - hdr); \
         err->code = YYJSON_READ_ERROR_##_code; \
         err->msg = _msg; \
     } \
     if (val_hdr) alc.free(alc.ctx, (void *)val_hdr); \
     return NULL; \
-} while(false)
+} while (false)
     
     usize hdr_len; /* value count used by doc */
     usize alc_num; /* value count capacity */
@@ -3862,6 +4438,11 @@ static_noinline yyjson_doc *read_root_single(u8 *hdr,
     yyjson_doc *doc; /* the JSON document, equals to val_hdr */
     const char *msg; /* error message */
     
+    bool ext; /* allow inf and nan */
+    bool raw; /* read number as raw */
+    u8 *raw_end; /* raw end for null-terminator */
+    u8 **pre; /* previous raw end pointer */
+    
     hdr_len = sizeof(yyjson_doc) / sizeof(yyjson_val);
     hdr_len += (sizeof(yyjson_doc) % sizeof(yyjson_val)) > 0;
     alc_num = hdr_len + 1; /* single value */
@@ -3869,54 +4450,59 @@ static_noinline yyjson_doc *read_root_single(u8 *hdr,
     val_hdr = (yyjson_val *)alc.malloc(alc.ctx, alc_num * sizeof(yyjson_val));
     if (unlikely(!val_hdr)) goto fail_alloc;
     val = val_hdr + hdr_len;
+    ext = (flg & YYJSON_READ_ALLOW_INF_AND_NAN) != 0;
+    raw = (flg & YYJSON_READ_NUMBER_AS_RAW) != 0;
+    raw_end = NULL;
+    pre = raw ? &raw_end : NULL;
     
     if (char_is_number(*cur)) {
-        if (likely(read_number(cur, &cur, flg, val, &msg))) goto doc_end;
+        if (likely(read_number(&cur, pre, ext, val, &msg))) goto doc_end;
         goto fail_number;
     }
     if (*cur == '"') {
-        if (likely(read_string(cur, &cur, val, &msg))) goto doc_end;
+        if (likely(read_string(&cur, val, &msg))) goto doc_end;
         goto fail_string;
     }
     if (*cur == 't') {
-        if (likely(read_true(cur, &cur, val))) goto doc_end;
+        if (likely(read_true(&cur, val))) goto doc_end;
         goto fail_literal;
     }
     if (*cur == 'f') {
-        if (likely(read_false(cur, &cur, val))) goto doc_end;
+        if (likely(read_false(&cur, val))) goto doc_end;
         goto fail_literal;
     }
     if (*cur == 'n') {
-        if (likely(read_null(cur, &cur, val))) goto doc_end;
-        if (has_flag(ALLOW_INF_AND_NAN)) {
-            if (read_nan(false, cur, &cur, val)) goto doc_end;
+        if (likely(read_null(&cur, val))) goto doc_end;
+        if (unlikely(ext)) {
+            if (read_nan(false, &cur, pre, val)) goto doc_end;
         }
         goto fail_literal;
     }
-    if (has_flag(ALLOW_INF_AND_NAN)) {
-        if (read_inf_or_nan(false, cur, &cur, val)) goto doc_end;
+    if (unlikely(ext)) {
+        if (read_inf_or_nan(false, &cur, pre, val)) goto doc_end;
     }
     goto fail_character;
     
 doc_end:
     /* check invalid contents after json document */
     if (unlikely(cur < end) && !has_flag(STOP_WHEN_DONE)) {
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
         if (has_flag(ALLOW_COMMENTS)) {
-            if (!skip_spaces_and_comments(cur, &cur)) {
+            if (!skip_spaces_and_comments(&cur)) {
                 if (byte_match_2(cur, "/*")) goto fail_comment;
             }
-        } else while(char_is_space(*cur)) cur++;
+        } else while (char_is_space(*cur)) cur++;
 #else
-        while(char_is_space(*cur)) cur++;
+        while (char_is_space(*cur)) cur++;
 #endif
         if (unlikely(cur < end)) goto fail_garbage;
     }
     
+    if (pre && *pre) **pre = '\0';
     doc = (yyjson_doc *)val_hdr;
     doc->root = val_hdr + hdr_len;
     doc->alc = alc;
-    doc->dat_read = cur - hdr;
+    doc->dat_read = (usize)(cur - hdr);
     doc->val_read = 1;
     doc->str_pool = has_flag(INSITU) ? NULL : (char *)hdr;
     return doc;
@@ -3940,7 +4526,7 @@ fail_garbage:
 #undef return_err
 }
 
-/** Read JSON document (optimized for minify). */
+/** Read JSON document (accept all style, but optimized for minify). */
 static_inline yyjson_doc *read_root_minify(u8 *hdr,
                                            u8 *cur,
                                            u8 *end,
@@ -3949,20 +4535,20 @@ static_inline yyjson_doc *read_root_minify(u8 *hdr,
                                            yyjson_read_err *err) {
     
 #define has_flag(_flag) unlikely((flg & YYJSON_READ_##_flag) != 0)
-
+    
 #define return_err(_pos, _code, _msg) do { \
     if (_pos >= end) { \
-        err->pos = end - hdr; \
+        err->pos = (usize)(end - hdr); \
         err->code = YYJSON_READ_ERROR_UNEXPECTED_END; \
         err->msg = "unexpected end of data"; \
     } else { \
-        err->pos = _pos - hdr; \
+        err->pos = (usize)(_pos - hdr); \
         err->code = YYJSON_READ_ERROR_##_code; \
         err->msg = _msg; \
     } \
     if (val_hdr) alc.free(alc.ctx, (void *)val_hdr); \
     return NULL; \
-} while(false)
+} while (false)
     
 #define val_incr() do { \
     val++; \
@@ -3977,7 +4563,7 @@ static_inline yyjson_doc *read_root_minify(u8 *hdr,
         val_hdr = val_tmp; \
         val_end = val_tmp + (alc_len - 2); \
     } \
-} while(false)
+} while (false)
     
     usize dat_len; /* data length in bytes, hint for allocator */
     usize hdr_len; /* value count used by yyjson_doc */
@@ -3993,7 +4579,12 @@ static_inline yyjson_doc *read_root_minify(u8 *hdr,
     yyjson_doc *doc; /* the JSON document, equals to val_hdr */
     const char *msg; /* error message */
     
-    dat_len = has_flag(STOP_WHEN_DONE) ? 256 : (end - cur);
+    bool ext; /* allow inf and nan */
+    bool raw; /* read number as raw */
+    u8 *raw_end; /* raw end for null-terminator */
+    u8 **pre; /* previous raw end pointer */
+    
+    dat_len = has_flag(STOP_WHEN_DONE) ? 256 : (usize)(end - cur);
     hdr_len = sizeof(yyjson_doc) / sizeof(yyjson_val);
     hdr_len += (sizeof(yyjson_doc) % sizeof(yyjson_val)) > 0;
     alc_max = USIZE_MAX / sizeof(yyjson_val);
@@ -4006,7 +4597,11 @@ static_inline yyjson_doc *read_root_minify(u8 *hdr,
     val = val_hdr + hdr_len;
     ctn = val;
     ctn_len = 0;
-
+    ext = (flg & YYJSON_READ_ALLOW_INF_AND_NAN) != 0;
+    raw = (flg & YYJSON_READ_NUMBER_AS_RAW) != 0;
+    raw_end = NULL;
+    pre = raw ? &raw_end : NULL;
+    
     if (*cur++ == '{') {
         ctn->tag = YYJSON_TYPE_OBJ;
         ctn->uni.ofs = 0;
@@ -4025,7 +4620,7 @@ arr_begin:
     /* create a new array value, save parent container offset */
     val_incr();
     val->tag = YYJSON_TYPE_ARR;
-    val->uni.ofs = (u8 *)val - (u8 *)ctn;
+    val->uni.ofs = (usize)((u8 *)val - (u8 *)ctn);
     
     /* push the new array value as current container */
     ctn = val;
@@ -4043,33 +4638,33 @@ arr_val_begin:
     if (char_is_number(*cur)) {
         val_incr();
         ctn_len++;
-        if (likely(read_number(cur, &cur, flg, val, &msg))) goto arr_val_end;
+        if (likely(read_number(&cur, pre, ext, val, &msg))) goto arr_val_end;
         goto fail_number;
     }
     if (*cur == '"') {
         val_incr();
         ctn_len++;
-        if (likely(read_string(cur, &cur, val, &msg))) goto arr_val_end;
+        if (likely(read_string(&cur, val, &msg))) goto arr_val_end;
         goto fail_string;
     }
     if (*cur == 't') {
         val_incr();
         ctn_len++;
-        if (likely(read_true(cur, &cur, val))) goto arr_val_end;
+        if (likely(read_true(&cur, val))) goto arr_val_end;
         goto fail_literal;
     }
     if (*cur == 'f') {
         val_incr();
         ctn_len++;
-        if (likely(read_false(cur, &cur, val))) goto arr_val_end;
+        if (likely(read_false(&cur, val))) goto arr_val_end;
         goto fail_literal;
     }
     if (*cur == 'n') {
         val_incr();
         ctn_len++;
-        if (likely(read_null(cur, &cur, val))) goto arr_val_end;
-        if (has_flag(ALLOW_INF_AND_NAN)) {
-            if (read_nan(false, cur, &cur, val)) goto arr_val_end;
+        if (likely(read_null(&cur, val))) goto arr_val_end;
+        if (unlikely(ext)) {
+            if (read_nan(false, &cur, pre, val)) goto arr_val_end;
         }
         goto fail_literal;
     }
@@ -4080,18 +4675,18 @@ arr_val_begin:
         goto fail_trailing_comma;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto arr_val_begin;
     }
-    if (has_flag(ALLOW_INF_AND_NAN) && *cur == 'N') {
+    if (unlikely(ext) && (*cur == 'i' || *cur == 'I' || *cur == 'N')) {
         val_incr();
         ctn_len++;
-        if (read_inf_or_nan(false, cur, &cur, val)) goto arr_val_end;
+        if (read_inf_or_nan(false, &cur, pre, val)) goto arr_val_end;
         goto fail_character;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto arr_val_begin;
+        if (skip_spaces_and_comments(&cur)) goto arr_val_begin;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4107,12 +4702,12 @@ arr_val_end:
         goto arr_end;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto arr_val_end;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto arr_val_end;
+        if (skip_spaces_and_comments(&cur)) goto arr_val_end;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4120,10 +4715,10 @@ arr_val_end:
     
 arr_end:
     /* get parent container */
-    ctn_parent = (yyjson_val *)((u8 *)ctn - ctn->uni.ofs);
+    ctn_parent = (yyjson_val *)(void *)((u8 *)ctn - ctn->uni.ofs);
     
     /* save the next sibling value offset */
-    ctn->uni.ofs = (u8 *)val - (u8 *)ctn + sizeof(yyjson_val);
+    ctn->uni.ofs = (usize)((u8 *)val - (u8 *)ctn) + sizeof(yyjson_val);
     ctn->tag = ((ctn_len) << YYJSON_TAG_BIT) | YYJSON_TYPE_ARR;
     if (unlikely(ctn == ctn_parent)) goto doc_end;
     
@@ -4143,7 +4738,7 @@ obj_begin:
     val_incr();
     val->tag = YYJSON_TYPE_OBJ;
     /* offset to the parent */
-    val->uni.ofs = (u8 *)val - (u8 *)ctn;
+    val->uni.ofs = (usize)((u8 *)val - (u8 *)ctn);
     ctn = val;
     ctn_len = 0;
     
@@ -4151,7 +4746,7 @@ obj_key_begin:
     if (likely(*cur == '"')) {
         val_incr();
         ctn_len++;
-        if (likely(read_string(cur, &cur, val, &msg))) goto obj_key_end;
+        if (likely(read_string(&cur, val, &msg))) goto obj_key_end;
         goto fail_string;
     }
     if (likely(*cur == '}')) {
@@ -4161,12 +4756,12 @@ obj_key_begin:
         goto fail_trailing_comma;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto obj_key_begin;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto obj_key_begin;
+        if (skip_spaces_and_comments(&cur)) goto obj_key_begin;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4178,12 +4773,12 @@ obj_key_end:
         goto obj_val_begin;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto obj_key_end;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto obj_key_end;
+        if (skip_spaces_and_comments(&cur)) goto obj_key_end;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4193,13 +4788,13 @@ obj_val_begin:
     if (*cur == '"') {
         val++;
         ctn_len++;
-        if (likely(read_string(cur, &cur, val, &msg))) goto obj_val_end;
+        if (likely(read_string(&cur, val, &msg))) goto obj_val_end;
         goto fail_string;
     }
     if (char_is_number(*cur)) {
         val++;
         ctn_len++;
-        if (likely(read_number(cur, &cur, flg, val, &msg))) goto obj_val_end;
+        if (likely(read_number(&cur, pre, ext, val, &msg))) goto obj_val_end;
         goto fail_number;
     }
     if (*cur == '{') {
@@ -4213,37 +4808,37 @@ obj_val_begin:
     if (*cur == 't') {
         val++;
         ctn_len++;
-        if (likely(read_true(cur, &cur, val))) goto obj_val_end;
+        if (likely(read_true(&cur, val))) goto obj_val_end;
         goto fail_literal;
     }
     if (*cur == 'f') {
         val++;
         ctn_len++;
-        if (likely(read_false(cur, &cur, val))) goto obj_val_end;
+        if (likely(read_false(&cur, val))) goto obj_val_end;
         goto fail_literal;
     }
     if (*cur == 'n') {
         val++;
         ctn_len++;
-        if (likely(read_null(cur, &cur, val))) goto obj_val_end;
-        if (has_flag(ALLOW_INF_AND_NAN)) {
-            if (read_nan(false, cur, &cur, val)) goto obj_val_end;
+        if (likely(read_null(&cur, val))) goto obj_val_end;
+        if (unlikely(ext)) {
+            if (read_nan(false, &cur, pre, val)) goto obj_val_end;
         }
         goto fail_literal;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto obj_val_begin;
     }
-    if (has_flag(ALLOW_INF_AND_NAN) && *cur == 'N') {
+    if (unlikely(ext) && (*cur == 'i' || *cur == 'I' || *cur == 'N')) {
         val++;
         ctn_len++;
-        if (read_inf_or_nan(false, cur, &cur, val)) goto obj_val_end;
+        if (read_inf_or_nan(false, &cur, pre, val)) goto obj_val_end;
         goto fail_character;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto obj_val_begin;
+        if (skip_spaces_and_comments(&cur)) goto obj_val_begin;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4259,12 +4854,12 @@ obj_val_end:
         goto obj_end;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto obj_val_end;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto obj_val_end;
+        if (skip_spaces_and_comments(&cur)) goto obj_val_end;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4272,9 +4867,9 @@ obj_val_end:
     
 obj_end:
     /* pop container */
-    ctn_parent = (yyjson_val *)((u8 *)ctn - ctn->uni.ofs);
+    ctn_parent = (yyjson_val *)(void *)((u8 *)ctn - ctn->uni.ofs);
     /* point to the next value */
-    ctn->uni.ofs = (u8 *)val - (u8 *)ctn + sizeof(yyjson_val);
+    ctn->uni.ofs = (usize)((u8 *)val - (u8 *)ctn) + sizeof(yyjson_val);
     ctn->tag = (ctn_len << (YYJSON_TAG_BIT - 1)) | YYJSON_TYPE_OBJ;
     if (unlikely(ctn == ctn_parent)) goto doc_end;
     ctn = ctn_parent;
@@ -4289,18 +4884,19 @@ doc_end:
     
     /* check invalid contents after json document */
     if (unlikely(cur < end) && !has_flag(STOP_WHEN_DONE)) {
-#if !YYJSON_DISABLE_COMMENT_READER
-        if (has_flag(ALLOW_COMMENTS)) skip_spaces_and_comments(cur, &cur); else
+#if !YYJSON_DISABLE_NON_STANDARD
+        if (has_flag(ALLOW_COMMENTS)) skip_spaces_and_comments(&cur); else
 #endif
-        while(char_is_space(*cur)) cur++;
+        while (char_is_space(*cur)) cur++;
         if (unlikely(cur < end)) goto fail_garbage;
     }
     
+    if (pre && *pre) **pre = '\0';
     doc = (yyjson_doc *)val_hdr;
     doc->root = val_hdr + hdr_len;
     doc->alc = alc;
-    doc->dat_read = cur - hdr;
-    doc->val_read = (val - doc->root) + 1;
+    doc->dat_read = (usize)(cur - hdr);
+    doc->val_read = (usize)((val - doc->root) + 1);
     doc->str_pool = has_flag(INSITU) ? NULL : (char *)hdr;
     return doc;
     
@@ -4326,7 +4922,7 @@ fail_garbage:
 #undef return_err
 }
 
-/** Read JSON document (optimized for pretty). */
+/** Read JSON document (accept all style, but optimized for pretty). */
 static_inline yyjson_doc *read_root_pretty(u8 *hdr,
                                            u8 *cur,
                                            u8 *end,
@@ -4335,20 +4931,20 @@ static_inline yyjson_doc *read_root_pretty(u8 *hdr,
                                            yyjson_read_err *err) {
     
 #define has_flag(_flag) unlikely((flg & YYJSON_READ_##_flag) != 0)
-
+    
 #define return_err(_pos, _code, _msg) do { \
     if (_pos >= end) { \
-        err->pos = end - hdr; \
+        err->pos = (usize)(end - hdr); \
         err->code = YYJSON_READ_ERROR_UNEXPECTED_END; \
         err->msg = "unexpected end of data"; \
     } else { \
-        err->pos = _pos - hdr; \
+        err->pos = (usize)(_pos - hdr); \
         err->code = YYJSON_READ_ERROR_##_code; \
         err->msg = _msg; \
     } \
     if (val_hdr) alc.free(alc.ctx, (void *)val_hdr); \
     return NULL; \
-} while(false)
+} while (false)
     
 #define val_incr() do { \
     val++; \
@@ -4363,7 +4959,7 @@ static_inline yyjson_doc *read_root_pretty(u8 *hdr,
         val_hdr = val_tmp; \
         val_end = val_tmp + (alc_len - 2); \
     } \
-} while(false)
+} while (false)
     
     usize dat_len; /* data length in bytes, hint for allocator */
     usize hdr_len; /* value count used by yyjson_doc */
@@ -4379,7 +4975,12 @@ static_inline yyjson_doc *read_root_pretty(u8 *hdr,
     yyjson_doc *doc; /* the JSON document, equals to val_hdr */
     const char *msg; /* error message */
     
-    dat_len = has_flag(STOP_WHEN_DONE) ? 256 : (end - cur);
+    bool ext; /* allow inf and nan */
+    bool raw; /* read number as raw */
+    u8 *raw_end; /* raw end for null-terminator */
+    u8 **pre; /* previous raw end pointer */
+    
+    dat_len = has_flag(STOP_WHEN_DONE) ? 256 : (usize)(end - cur);
     hdr_len = sizeof(yyjson_doc) / sizeof(yyjson_val);
     hdr_len += (sizeof(yyjson_doc) % sizeof(yyjson_val)) > 0;
     alc_max = USIZE_MAX / sizeof(yyjson_val);
@@ -4392,6 +4993,10 @@ static_inline yyjson_doc *read_root_pretty(u8 *hdr,
     val = val_hdr + hdr_len;
     ctn = val;
     ctn_len = 0;
+    ext = (flg & YYJSON_READ_ALLOW_INF_AND_NAN) != 0;
+    raw = (flg & YYJSON_READ_NUMBER_AS_RAW) != 0;
+    raw_end = NULL;
+    pre = raw ? &raw_end : NULL;
     
     if (*cur++ == '{') {
         ctn->tag = YYJSON_TYPE_OBJ;
@@ -4413,7 +5018,7 @@ arr_begin:
     /* create a new array value, save parent container offset */
     val_incr();
     val->tag = YYJSON_TYPE_ARR;
-    val->uni.ofs = (u8 *)val - (u8 *)ctn;
+    val->uni.ofs = (usize)((u8 *)val - (u8 *)ctn);
     
     /* push the new array value as current container */
     ctn = val;
@@ -4421,7 +5026,7 @@ arr_begin:
     if (*cur == '\n') cur++;
     
 arr_val_begin:
-#if yyjson_is_real_gcc
+#if YYJSON_IS_REAL_GCC
     while (true) repeat16({
         if (byte_match_2(cur, "  ")) cur += 2;
         else break;
@@ -4444,33 +5049,33 @@ arr_val_begin:
     if (char_is_number(*cur)) {
         val_incr();
         ctn_len++;
-        if (likely(read_number(cur, &cur, flg, val, &msg))) goto arr_val_end;
+        if (likely(read_number(&cur, pre, ext, val, &msg))) goto arr_val_end;
         goto fail_number;
     }
     if (*cur == '"') {
         val_incr();
         ctn_len++;
-        if (likely(read_string(cur, &cur, val, &msg))) goto arr_val_end;
+        if (likely(read_string( &cur, val, &msg))) goto arr_val_end;
         goto fail_string;
     }
     if (*cur == 't') {
         val_incr();
         ctn_len++;
-        if (likely(read_true(cur, &cur, val))) goto arr_val_end;
+        if (likely(read_true(&cur, val))) goto arr_val_end;
         goto fail_literal;
     }
     if (*cur == 'f') {
         val_incr();
         ctn_len++;
-        if (likely(read_false(cur, &cur, val))) goto arr_val_end;
+        if (likely(read_false(&cur, val))) goto arr_val_end;
         goto fail_literal;
     }
     if (*cur == 'n') {
         val_incr();
         ctn_len++;
-        if (likely(read_null(cur, &cur, val))) goto arr_val_end;
-        if (has_flag(ALLOW_INF_AND_NAN)) {
-            if (read_nan(false, cur, &cur, val)) goto arr_val_end;
+        if (likely(read_null(&cur, val))) goto arr_val_end;
+        if (unlikely(ext)) {
+            if (read_nan(false, &cur, pre, val)) goto arr_val_end;
         }
         goto fail_literal;
     }
@@ -4481,18 +5086,18 @@ arr_val_begin:
         goto fail_trailing_comma;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto arr_val_begin;
     }
-    if (has_flag(ALLOW_INF_AND_NAN) && *cur == 'N') {
+    if (unlikely(ext) && (*cur == 'i' || *cur == 'I' || *cur == 'N')) {
         val_incr();
         ctn_len++;
-        if (read_inf_or_nan(false, cur, &cur, val)) goto arr_val_end;
+        if (read_inf_or_nan(false, &cur, pre, val)) goto arr_val_end;
         goto fail_character;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto arr_val_begin;
+        if (skip_spaces_and_comments(&cur)) goto arr_val_begin;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4512,12 +5117,12 @@ arr_val_end:
         goto arr_end;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto arr_val_end;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto arr_val_end;
+        if (skip_spaces_and_comments(&cur)) goto arr_val_end;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4525,10 +5130,10 @@ arr_val_end:
     
 arr_end:
     /* get parent container */
-    ctn_parent = (yyjson_val *)((u8 *)ctn - ctn->uni.ofs);
+    ctn_parent = (yyjson_val *)(void *)((u8 *)ctn - ctn->uni.ofs);
     
     /* save the next sibling value offset */
-    ctn->uni.ofs = (u8 *)val - (u8 *)ctn + sizeof(yyjson_val);
+    ctn->uni.ofs = (usize)((u8 *)val - (u8 *)ctn) + sizeof(yyjson_val);
     ctn->tag = ((ctn_len) << YYJSON_TAG_BIT) | YYJSON_TYPE_ARR;
     if (unlikely(ctn == ctn_parent)) goto doc_end;
     
@@ -4549,13 +5154,13 @@ obj_begin:
     val_incr();
     val->tag = YYJSON_TYPE_OBJ;
     /* offset to the parent */
-    val->uni.ofs = (u8 *)val - (u8 *)ctn;
+    val->uni.ofs = (usize)((u8 *)val - (u8 *)ctn);
     ctn = val;
     ctn_len = 0;
     if (*cur == '\n') cur++;
     
 obj_key_begin:
-#if yyjson_is_real_gcc
+#if YYJSON_IS_REAL_GCC
     while (true) repeat16({
         if (byte_match_2(cur, "  ")) cur += 2;
         else break;
@@ -4569,7 +5174,7 @@ obj_key_begin:
     if (likely(*cur == '"')) {
         val_incr();
         ctn_len++;
-        if (likely(read_string(cur, &cur, val, &msg))) goto obj_key_end;
+        if (likely(read_string(&cur, val, &msg))) goto obj_key_end;
         goto fail_string;
     }
     if (likely(*cur == '}')) {
@@ -4579,12 +5184,12 @@ obj_key_begin:
         goto fail_trailing_comma;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto obj_key_begin;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto obj_key_begin;
+        if (skip_spaces_and_comments(&cur)) goto obj_key_begin;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4600,12 +5205,12 @@ obj_key_end:
         goto obj_val_begin;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto obj_key_end;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto obj_key_end;
+        if (skip_spaces_and_comments(&cur)) goto obj_key_end;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4615,13 +5220,13 @@ obj_val_begin:
     if (*cur == '"') {
         val++;
         ctn_len++;
-        if (likely(read_string(cur, &cur, val, &msg))) goto obj_val_end;
+        if (likely(read_string(&cur, val, &msg))) goto obj_val_end;
         goto fail_string;
     }
     if (char_is_number(*cur)) {
         val++;
         ctn_len++;
-        if (likely(read_number(cur, &cur, flg, val, &msg))) goto obj_val_end;
+        if (likely(read_number(&cur, pre, ext, val, &msg))) goto obj_val_end;
         goto fail_number;
     }
     if (*cur == '{') {
@@ -4635,37 +5240,37 @@ obj_val_begin:
     if (*cur == 't') {
         val++;
         ctn_len++;
-        if (likely(read_true(cur, &cur, val))) goto obj_val_end;
+        if (likely(read_true(&cur, val))) goto obj_val_end;
         goto fail_literal;
     }
     if (*cur == 'f') {
         val++;
         ctn_len++;
-        if (likely(read_false(cur, &cur, val))) goto obj_val_end;
+        if (likely(read_false(&cur, val))) goto obj_val_end;
         goto fail_literal;
     }
     if (*cur == 'n') {
         val++;
         ctn_len++;
-        if (likely(read_null(cur, &cur, val))) goto obj_val_end;
-        if (has_flag(ALLOW_INF_AND_NAN)) {
-            if (read_nan(false, cur, &cur, val)) goto obj_val_end;
+        if (likely(read_null(&cur, val))) goto obj_val_end;
+        if (unlikely(ext)) {
+            if (read_nan(false, &cur, pre, val)) goto obj_val_end;
         }
         goto fail_literal;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto obj_val_begin;
     }
-    if (has_flag(ALLOW_INF_AND_NAN) && *cur == 'N') {
+    if (unlikely(ext) && (*cur == 'i' || *cur == 'I' || *cur == 'N')) {
         val++;
         ctn_len++;
-        if (read_inf_or_nan(false, cur, &cur, val)) goto obj_val_end;
+        if (read_inf_or_nan(false, &cur, pre, val)) goto obj_val_end;
         goto fail_character;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto obj_val_begin;
+        if (skip_spaces_and_comments(&cur)) goto obj_val_begin;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4685,12 +5290,12 @@ obj_val_end:
         goto obj_end;
     }
     if (char_is_space(*cur)) {
-        while(char_is_space(*++cur));
+        while (char_is_space(*++cur));
         goto obj_val_end;
     }
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
     if (has_flag(ALLOW_COMMENTS)) {
-        if (skip_spaces_and_comments(cur, &cur)) goto obj_val_end;
+        if (skip_spaces_and_comments(&cur)) goto obj_val_end;
         if (byte_match_2(cur, "/*")) goto fail_comment;
     }
 #endif
@@ -4698,9 +5303,9 @@ obj_val_end:
     
 obj_end:
     /* pop container */
-    ctn_parent = (yyjson_val *)((u8 *)ctn - ctn->uni.ofs);
+    ctn_parent = (yyjson_val *)(void *)((u8 *)ctn - ctn->uni.ofs);
     /* point to the next value */
-    ctn->uni.ofs = (u8 *)val - (u8 *)ctn + sizeof(yyjson_val);
+    ctn->uni.ofs = (usize)((u8 *)val - (u8 *)ctn) + sizeof(yyjson_val);
     ctn->tag = (ctn_len << (YYJSON_TAG_BIT - 1)) | YYJSON_TYPE_OBJ;
     if (unlikely(ctn == ctn_parent)) goto doc_end;
     ctn = ctn_parent;
@@ -4716,18 +5321,19 @@ doc_end:
     
     /* check invalid contents after json document */
     if (unlikely(cur < end) && !has_flag(STOP_WHEN_DONE)) {
-#if !YYJSON_DISABLE_COMMENT_READER
-        if (has_flag(ALLOW_COMMENTS)) skip_spaces_and_comments(cur, &cur); else
+#if !YYJSON_DISABLE_NON_STANDARD
+        if (has_flag(ALLOW_COMMENTS)) skip_spaces_and_comments(&cur); else
 #endif
-        while(char_is_space(*cur)) cur++;
+        while (char_is_space(*cur)) cur++;
         if (unlikely(cur < end)) goto fail_garbage;
     }
     
+    if (pre && *pre) **pre = '\0';
     doc = (yyjson_doc *)val_hdr;
     doc->root = val_hdr + hdr_len;
     doc->alc = alc;
-    doc->dat_read = cur - hdr;
-    doc->val_read = (val - val_hdr) - hdr_len + 1;
+    doc->dat_read = (usize)(cur - hdr);
+    doc->val_read = (usize)((val - val_hdr)) - hdr_len + 1;
     doc->str_pool = has_flag(INSITU) ? NULL : (char *)hdr;
     return doc;
     
@@ -4747,7 +5353,7 @@ fail_character:
     return_err(cur, UNEXPECTED_CHARACTER, "unexpected character");
 fail_garbage:
     return_err(cur, UNEXPECTED_CONTENT, "unexpected content after document");
-
+    
 #undef has_flag
 #undef val_incr
 #undef return_err
@@ -4762,18 +5368,18 @@ fail_garbage:
 yyjson_doc *yyjson_read_opts(char *dat,
                              usize len,
                              yyjson_read_flag flg,
-                             yyjson_alc *alc_ptr,
+                             const yyjson_alc *alc_ptr,
                              yyjson_read_err *err) {
     
 #define has_flag(_flag) unlikely((flg & YYJSON_READ_##_flag) != 0)
     
 #define return_err(_pos, _code, _msg) do { \
-    err->pos = _pos; \
+    err->pos = (usize)(_pos); \
     err->msg = _msg; \
     err->code = YYJSON_READ_ERROR_##_code; \
     if (!has_flag(INSITU) && hdr) alc.free(alc.ctx, (void *)hdr); \
     return NULL; \
-} while(false)
+} while (false)
     
     yyjson_read_err dummy_err;
     yyjson_alc alc;
@@ -4794,19 +5400,19 @@ yyjson_doc *yyjson_read_opts(char *dat,
         return_err(0, INVALID_PARAMETER, "input length is 0");
     }
     
-    /* add 4-byte zero padding for input data */
+    /* add 4-byte zero padding for input data if necessary */
     if (!has_flag(INSITU)) {
-        if (unlikely(len >= USIZE_MAX - PADDING_SIZE)) {
+        if (unlikely(len >= USIZE_MAX - YYJSON_PADDING_SIZE)) {
             return_err(0, MEMORY_ALLOCATION, "memory allocation failed");
         }
-        hdr = (u8 *)alc.malloc(alc.ctx, len + PADDING_SIZE);
+        hdr = (u8 *)alc.malloc(alc.ctx, len + YYJSON_PADDING_SIZE);
         if (unlikely(!hdr)) {
             return_err(0, MEMORY_ALLOCATION, "memory allocation failed");
         }
         end = hdr + len;
         cur = hdr;
         memcpy(hdr, dat, len);
-        memset(end, 0, PADDING_SIZE);
+        memset(end, 0, YYJSON_PADDING_SIZE);
     } else {
         hdr = (u8 *)dat;
         end = (u8 *)dat + len;
@@ -4815,26 +5421,32 @@ yyjson_doc *yyjson_read_opts(char *dat,
     
     /* skip empty contents before json document */
     if (unlikely(char_is_space_or_comment(*cur))) {
-#if !YYJSON_DISABLE_COMMENT_READER
+#if !YYJSON_DISABLE_NON_STANDARD
         if (has_flag(ALLOW_COMMENTS)) {
-            if (!skip_spaces_and_comments(cur, &cur)) {
+            if (!skip_spaces_and_comments(&cur)) {
                 return_err(cur - hdr, INVALID_COMMENT,
                            "unclosed multiline comment");
             }
         } else {
             if (likely(char_is_space(*cur))) {
-                while(char_is_space(*++cur));
+                while (char_is_space(*++cur));
             }
         }
 #else
         if (likely(char_is_space(*cur))) {
-            while(char_is_space(*++cur));
+            while (char_is_space(*++cur));
         }
 #endif
         if (unlikely(cur >= end)) {
             return_err(0, EMPTY_CONTENT, "input data is empty");
         }
     }
+    
+#if YYJSON_DISABLE_NON_STANDARD
+    flg &= ~YYJSON_READ_ALLOW_TRAILING_COMMAS;
+    flg &= ~YYJSON_READ_ALLOW_COMMENTS;
+    flg &= ~YYJSON_READ_ALLOW_INF_AND_NAN;
+#endif
     
     /* read json document */
     if (likely(char_is_container(*cur))) {
@@ -4851,17 +5463,20 @@ yyjson_doc *yyjson_read_opts(char *dat,
     if (likely(doc)) {
         memset(err, 0, sizeof(yyjson_read_err));
     } else {
+        /* RFC 8259: JSON text MUST be encoded using UTF-8 */
         if (err->pos == 0 && err->code != YYJSON_READ_ERROR_MEMORY_ALLOCATION) {
             if ((hdr[0] == 0xEF && hdr[1] == 0xBB && hdr[2] == 0xBF)) {
                 err->msg = "byte order mark (BOM) is not supported";
-            } else if ((hdr[0] == 0xFE && hdr[1] == 0xFF) ||
-                       (hdr[0] == 0xFF && hdr[1] == 0xFE)) {
-                err->msg = "UTF-16 encoding is not supported";
-            } else if ((hdr[0] == 0x00 && hdr[1] == 0x00 &&
-                        hdr[2] == 0xFE && hdr[3] == 0xFF) ||
-                       (hdr[0] == 0xFF && hdr[1] == 0xFE &&
-                        hdr[2] == 0x00 && hdr[3] == 0x00)) {
+            } else if (len >= 4 &&
+                       ((hdr[0] == 0x00 && hdr[1] == 0x00 &&
+                         hdr[2] == 0xFE && hdr[3] == 0xFF) ||
+                        (hdr[0] == 0xFF && hdr[1] == 0xFE &&
+                         hdr[2] == 0x00 && hdr[3] == 0x00))) {
                 err->msg = "UTF-32 encoding is not supported";
+            } else if (len >= 2 &&
+                       ((hdr[0] == 0xFE && hdr[1] == 0xFF) ||
+                        (hdr[0] == 0xFF && hdr[1] == 0xFE))) {
+                err->msg = "UTF-16 encoding is not supported";
             }
         }
         if (!has_flag(INSITU) && hdr) alc.free(alc.ctx, (void *)hdr);
@@ -4874,7 +5489,7 @@ yyjson_doc *yyjson_read_opts(char *dat,
 
 yyjson_doc *yyjson_read_file(const char *path,
                              yyjson_read_flag flg,
-                             yyjson_alc *alc_ptr,
+                             const yyjson_alc *alc_ptr,
                              yyjson_read_err *err) {
     
 #define return_err(_code, _msg) do { \
@@ -4882,15 +5497,14 @@ yyjson_doc *yyjson_read_file(const char *path,
     err->msg = _msg; \
     err->code = YYJSON_READ_ERROR_##_code; \
     if (file) fclose(file); \
-    if (hdr) alc.free(alc.ctx, hdr); \
+    if (buf) alc.free(alc.ctx, buf); \
     return NULL; \
-} while(false)
+} while (false)
     
     yyjson_read_err dummy_err;
-    yyjson_alc alc;
+    yyjson_alc alc = alc_ptr ? *alc_ptr : YYJSON_DEFAULT_ALC;
     yyjson_doc *doc;
     
-    u8 *hdr = NULL;
     FILE *file = NULL;
     long file_size = 0;
     void *buf = NULL;
@@ -4898,65 +5512,74 @@ yyjson_doc *yyjson_read_file(const char *path,
     
     /* validate input parameters */
     if (!err) err = &dummy_err;
-    if (likely(!alc_ptr)) {
-        alc = YYJSON_DEFAULT_ALC;
+    if (unlikely(!path)) return_err(INVALID_PARAMETER, "input path is NULL");
+    
+    /* open file */
+    file = fopen_readonly(path);
+    if (file == NULL) return_err(FILE_OPEN, "file opening failed");
+    
+    /* get file size */
+    if (fseek(file, 0, SEEK_END) == 0) {
+        file_size = ftell(file);
+        if (file_size < 0 || (file_size + 1) < 0) file_size = 0;
+    }
+    rewind(file);
+    
+    /* read file */
+    if (file_size > 0) {
+        /* read the entire file in one call */
+        buf_size = (size_t)file_size + YYJSON_PADDING_SIZE;
+        buf = alc.malloc(alc.ctx, buf_size);
+        if (buf == NULL) {
+            return_err(MEMORY_ALLOCATION, "fail to alloc memory");
+        }
+        if (fread_safe(buf, (usize)file_size, file) != (usize)file_size) {
+            return_err(FILE_READ, "file reading failed");
+        }
     } else {
-        alc = *alc_ptr;
+        /* failed to get file size, read it as a stream */
+        usize chunk_min = (usize)64;
+        usize chunk_max = (usize)512 * 1024 * 1024;
+        usize chunk_now = chunk_min;
+        usize read_size;
+        void *tmp;
+        
+        buf_size = YYJSON_PADDING_SIZE;
+        while (true) {
+            if (buf_size + chunk_now < buf_size) { /* overflow */
+                return_err(MEMORY_ALLOCATION, "fail to alloc memory");
+            }
+            buf_size += chunk_now;
+            if (!buf) {
+                buf = alc.malloc(alc.ctx, buf_size);
+                if (!buf) return_err(MEMORY_ALLOCATION, "fail to alloc memory");
+            } else {
+                tmp = alc.realloc(alc.ctx, buf, buf_size);
+                if (!tmp) return_err(MEMORY_ALLOCATION, "fail to alloc memory");
+                buf = tmp;
+            }
+            tmp = ((u8 *)buf) + buf_size - YYJSON_PADDING_SIZE - chunk_now;
+            read_size = fread_safe(tmp, chunk_now, file);
+            file_size += (long)read_size;
+            if (read_size != chunk_now) break;
+            
+            chunk_now *= 2;
+            if (chunk_now > chunk_max) chunk_now = chunk_max;
+        }
     }
-    if (unlikely(!path)) {
-        return_err(INVALID_PARAMETER, "input path is NULL");
-    }
-    
-#if _MSC_VER >= 1400
-    if (fopen_s(&file, path, "rb") != 0) {
-        return_err(FILE_OPEN, "file opening failed");
-    }
-#else
-    file = fopen(path, "rb");
-#endif
-    if (file == NULL) {
-        return_err(FILE_OPEN, "file opening failed");
-    }
-    if (fseek(file, 0, SEEK_END) != 0) {
-        return_err(FILE_READ, "file seeking failed");
-    }
-    file_size = ftell(file);
-    if (file_size < 0) {
-        return_err(FILE_READ, "file reading failed");
-    }
-    if (file_size == 0) {
-        return_err(EMPTY_CONTENT, "input file is empty");
-    }
-    if (fseek(file, 0, SEEK_SET) != 0) {
-        return_err(FILE_READ, "file seeking failed");
-    }
-    
-    buf_size = (size_t)file_size + PADDING_SIZE;
-    buf = alc.malloc(alc.ctx, buf_size);
-    if (buf == NULL) {
-        return_err(MEMORY_ALLOCATION, "fail to alloc memory");
-    }
-    
-#if _MSC_VER >= 1400
-    if (fread_s(buf, buf_size, file_size, 1, file) != 1) {
-        return_err(FILE_READ, "file reading failed");
-    }
-#else
-    if (fread(buf, file_size, 1, file) != 1) {
-        return_err(FILE_READ, "file reading failed");
-    }
-#endif
     fclose(file);
     
-    memset((u8 *)buf + file_size, 0, PADDING_SIZE);
+    /* read JSON */
+    memset((u8 *)buf + file_size, 0, YYJSON_PADDING_SIZE);
     flg |= YYJSON_READ_INSITU;
-    doc = yyjson_read_opts((char *)buf, file_size, flg, &alc, err);
+    doc = yyjson_read_opts((char *)buf, (usize)file_size, flg, &alc, err);
     if (doc) {
         doc->str_pool = (char *)buf;
+        return doc;
     } else {
         alc.free(alc.ctx, buf);
+        return NULL;
     }
-    return doc;
     
 #undef return_err
 }
@@ -4976,6 +5599,12 @@ yyjson_doc *yyjson_read_file(const char *path,
  * Although most compilers may convert the "division by constant value" into
  * "multiply and shift", manual conversion can still help some compilers
  * generate fewer and better instructions.
+ *
+ * Reference:
+ * Division by Invariant Integers using Multiplication, 1994.
+ * https://gmplib.org/~tege/divcnst-pldi94.pdf
+ * Improved division by invariant integers, 2011.
+ * https://gmplib.org/~tege/division-paper.pdf
  *============================================================================*/
 
 /** Digit table from 00 to 99. */
@@ -5004,74 +5633,72 @@ static const char digit_table[200] = {
 };
 
 static_inline u8 *write_u32_len_8(u32 val, u8 *buf) {
-    /* 8 digits: aabbccdd */
-    u32 aa, bb, cc, dd, aabb, ccdd;
-    aabb = (u32)(((u64)val * 109951163) >> 40); /* (val / 10000) */
-    ccdd = val - aabb * 10000; /* (val % 10000) */
-    aa = (aabb * 5243) >> 19; /* (aabb / 100) */
-    cc = (ccdd * 5243) >> 19; /* (ccdd / 100) */
-    bb = aabb - aa * 100; /* (aabb % 100) */
-    dd = ccdd - cc * 100; /* (ccdd % 100) */
-    ((v16 *)buf)[0] = ((v16 *)digit_table)[aa];
-    ((v16 *)buf)[1] = ((v16 *)digit_table)[bb];
-    ((v16 *)buf)[2] = ((v16 *)digit_table)[cc];
-    ((v16 *)buf)[3] = ((v16 *)digit_table)[dd];
+    u32 aa, bb, cc, dd, aabb, ccdd;                 /* 8 digits: aabbccdd */
+    aabb = (u32)(((u64)val * 109951163) >> 40);     /* (val / 10000) */
+    ccdd = val - aabb * 10000;                      /* (val % 10000) */
+    aa = (aabb * 5243) >> 19;                       /* (aabb / 100) */
+    cc = (ccdd * 5243) >> 19;                       /* (ccdd / 100) */
+    bb = aabb - aa * 100;                           /* (aabb % 100) */
+    dd = ccdd - cc * 100;                           /* (ccdd % 100) */
+    ((v16 *)buf)[0] = ((const v16 *)digit_table)[aa];
+    ((v16 *)buf)[1] = ((const v16 *)digit_table)[bb];
+    ((v16 *)buf)[2] = ((const v16 *)digit_table)[cc];
+    ((v16 *)buf)[3] = ((const v16 *)digit_table)[dd];
     return buf + 8;
 }
 
 static_inline u8 *write_u32_len_4(u32 val, u8 *buf) {
-    /* 4 digits: aabb */
-    u32 aa, bb;
-    aa = (val * 5243) >> 19; /* (val / 100) */
-    bb = val - aa * 100; /* (val % 100) */
-    ((v16 *)buf)[0] = ((v16 *)digit_table)[aa];
-    ((v16 *)buf)[1] = ((v16 *)digit_table)[bb];
+    u32 aa, bb;                                     /* 4 digits: aabb */
+    aa = (val * 5243) >> 19;                        /* (val / 100) */
+    bb = val - aa * 100;                            /* (val % 100) */
+    ((v16 *)buf)[0] = ((const v16 *)digit_table)[aa];
+    ((v16 *)buf)[1] = ((const v16 *)digit_table)[bb];
     return buf + 4;
 }
 
 static_inline u8 *write_u32_len_1_8(u32 val, u8 *buf) {
     u32 aa, bb, cc, dd, aabb, bbcc, ccdd, lz;
     
-    if (val < 100) { /* 1-2 digits: aa */
-        lz = val < 10;
-        ((v16 *)buf)[0] = *(v16 *)&(digit_table[val * 2 + lz]);
+    if (val < 100) {                                /* 1-2 digits: aa */
+        lz = val < 10;                              /* leading zero: 0 or 1 */
+        ((v16 *)buf)[0] = *(const v16 *)(digit_table + (val * 2 + lz));
         buf -= lz;
         return buf + 2;
         
-    } else if (val < 10000) { /* 3-4 digits: aabb */
-        aa = (val * 5243) >> 19; /* (val / 100) */
-        bb = val - aa * 100; /* (val % 100) */
-        lz = aa < 10;
-        ((v16 *)buf)[0] = *(v16 *)&(digit_table[aa * 2 + lz]);
+    } else if (val < 10000) {                       /* 3-4 digits: aabb */
+        aa = (val * 5243) >> 19;                    /* (val / 100) */
+        bb = val - aa * 100;                        /* (val % 100) */
+        lz = aa < 10;                               /* leading zero: 0 or 1 */
+        ((v16 *)buf)[0] = *(const v16 *)(digit_table + (aa * 2 + lz));
         buf -= lz;
-        ((v16 *)buf)[1] = ((v16 *)digit_table)[bb];
+        ((v16 *)buf)[1] = ((const v16 *)digit_table)[bb];
         return buf + 4;
         
-    } else if (val < 1000000) { /* 5-6 digits: aabbcc */
-        aa = (u32)(((u64)val * 429497) >> 32); /* (val / 10000) */
-        bbcc = val - aa * 10000; /* (val % 10000) */
-        bb = (bbcc * 5243) >> 19; /* (bbcc / 100) */
-        cc = bbcc - bb * 100; /* (bbcc % 100) */
-        lz = aa < 10;
-        ((v16 *)buf)[0] = *(v16 *)&(digit_table[aa * 2 + lz]);
+    } else if (val < 1000000) {                     /* 5-6 digits: aabbcc */
+        aa = (u32)(((u64)val * 429497) >> 32);      /* (val / 10000) */
+        bbcc = val - aa * 10000;                    /* (val % 10000) */
+        bb = (bbcc * 5243) >> 19;                   /* (bbcc / 100) */
+        cc = bbcc - bb * 100;                       /* (bbcc % 100) */
+        lz = aa < 10;                               /* leading zero: 0 or 1 */
+        ((v16 *)buf)[0] = *(const v16 *)(digit_table + (aa * 2 + lz));
         buf -= lz;
-        ((v16 *)buf)[1] = ((v16 *)digit_table)[bb];
-        ((v16 *)buf)[2] = ((v16 *)digit_table)[cc];
+        ((v16 *)buf)[1] = ((const v16 *)digit_table)[bb];
+        ((v16 *)buf)[2] = ((const v16 *)digit_table)[cc];
         return buf + 6;
         
-    } else { /* 7-8 digits: aabbccdd */
+    } else {                                        /* 7-8 digits: aabbccdd */
         aabb = (u32)(((u64)val * 109951163) >> 40); /* (val / 10000) */
-        ccdd = val - aabb * 10000; /* (val % 10000) */
-        aa = (aabb * 5243) >> 19; /* (aabb / 100) */
-        cc = (ccdd * 5243) >> 19; /* (ccdd / 100) */
-        bb = aabb - aa * 100; /* (aabb % 100) */
-        dd = ccdd - cc * 100; /* (ccdd % 100) */
-        lz = aa < 10;
-        ((v16 *)buf)[0] = *(v16 *)&(digit_table[aa * 2 + lz]);
+        ccdd = val - aabb * 10000;                  /* (val % 10000) */
+        aa = (aabb * 5243) >> 19;                   /* (aabb / 100) */
+        cc = (ccdd * 5243) >> 19;                   /* (ccdd / 100) */
+        bb = aabb - aa * 100;                       /* (aabb % 100) */
+        dd = ccdd - cc * 100;                       /* (ccdd % 100) */
+        lz = aa < 10;                               /* leading zero: 0 or 1 */
+        ((v16 *)buf)[0] = *(const v16 *)(digit_table + (aa * 2 + lz));
         buf -= lz;
-        ((v16 *)buf)[1] = ((v16 *)digit_table)[bb];
-        ((v16 *)buf)[2] = ((v16 *)digit_table)[cc];
-        ((v16 *)buf)[3] = ((v16 *)digit_table)[dd];
+        ((v16 *)buf)[1] = ((const v16 *)digit_table)[bb];
+        ((v16 *)buf)[2] = ((const v16 *)digit_table)[cc];
+        ((v16 *)buf)[3] = ((const v16 *)digit_table)[dd];
         return buf + 8;
     }
 }
@@ -5079,32 +5706,31 @@ static_inline u8 *write_u32_len_1_8(u32 val, u8 *buf) {
 static_inline u8 *write_u64_len_5_8(u32 val, u8 *buf) {
     u32 aa, bb, cc, dd, aabb, bbcc, ccdd, lz;
     
-    if (val < 1000000) { /* 5-6 digits: aabbcc */
-        aa = (u32)(((u64)val * 429497) >> 32); /* (val / 10000) */
-        bbcc = val - aa * 10000; /* (val % 10000) */
-        bb = (bbcc * 5243) >> 19; /* (bbcc / 100) */
-        cc = bbcc - bb * 100; /* (bbcc % 100) */
-        lz = aa < 10;
-        ((v16 *)buf)[0] = *(v16 *)&(digit_table[aa * 2 + lz]);
+    if (val < 1000000) {                            /* 5-6 digits: aabbcc */
+        aa = (u32)(((u64)val * 429497) >> 32);      /* (val / 10000) */
+        bbcc = val - aa * 10000;                    /* (val % 10000) */
+        bb = (bbcc * 5243) >> 19;                   /* (bbcc / 100) */
+        cc = bbcc - bb * 100;                       /* (bbcc % 100) */
+        lz = aa < 10;                               /* leading zero: 0 or 1 */
+        ((v16 *)buf)[0] = *(const v16 *)(digit_table + (aa * 2 + lz));
         buf -= lz;
-        ((v16 *)buf)[1] = ((v16 *)digit_table)[bb];
-        ((v16 *)buf)[2] = ((v16 *)digit_table)[cc];
+        ((v16 *)buf)[1] = ((const v16 *)digit_table)[bb];
+        ((v16 *)buf)[2] = ((const v16 *)digit_table)[cc];
         return buf + 6;
         
-    } else { /* 7-8 digits: aabbccdd */
-        /* (val / 10000) */
-        aabb = (u32)(((u64)val * 109951163) >> 40);
-        ccdd = val - aabb * 10000; /* (val % 10000) */
-        aa = (aabb * 5243) >> 19; /* (aabb / 100) */
-        cc = (ccdd * 5243) >> 19; /* (ccdd / 100) */
-        bb = aabb - aa * 100; /* (aabb % 100) */
-        dd = ccdd - cc * 100; /* (ccdd % 100) */
-        lz = aa < 10;
-        ((v16 *)buf)[0] = *(v16 *)&(digit_table[aa * 2 + lz]);
+    } else {                                        /* 7-8 digits: aabbccdd */
+        aabb = (u32)(((u64)val * 109951163) >> 40); /* (val / 10000) */
+        ccdd = val - aabb * 10000;                  /* (val % 10000) */
+        aa = (aabb * 5243) >> 19;                   /* (aabb / 100) */
+        cc = (ccdd * 5243) >> 19;                   /* (ccdd / 100) */
+        bb = aabb - aa * 100;                       /* (aabb % 100) */
+        dd = ccdd - cc * 100;                       /* (ccdd % 100) */
+        lz = aa < 10;                               /* leading zero: 0 or 1 */
+        ((v16 *)buf)[0] = *(const v16 *)(digit_table + (aa * 2 + lz));
         buf -= lz;
-        ((v16 *)buf)[1] = ((v16 *)digit_table)[bb];
-        ((v16 *)buf)[2] = ((v16 *)digit_table)[cc];
-        ((v16 *)buf)[3] = ((v16 *)digit_table)[dd];
+        ((v16 *)buf)[1] = ((const v16 *)digit_table)[bb];
+        ((v16 *)buf)[2] = ((const v16 *)digit_table)[cc];
+        ((v16 *)buf)[3] = ((const v16 *)digit_table)[dd];
         return buf + 8;
     }
 }
@@ -5113,22 +5739,22 @@ static_inline u8 *write_u64(u64 val, u8 *buf) {
     u64 tmp, hgh;
     u32 mid, low;
     
-    if (val < 100000000) { /* 1-8 digits */
+    if (val < 100000000) {                          /* 1-8 digits */
         buf = write_u32_len_1_8((u32)val, buf);
         return buf;
         
-    } else if (val < (u64)100000000 * 100000000) { /* 9-16 digits */
-        hgh = val / 100000000;
-        low = (u32)(val - hgh * 100000000); /* (val % 100000000) */
+    } else if (val < (u64)100000000 * 100000000) {  /* 9-16 digits */
+        hgh = val / 100000000;                      /* (val / 100000000) */
+        low = (u32)(val - hgh * 100000000);         /* (val % 100000000) */
         buf = write_u32_len_1_8((u32)hgh, buf);
         buf = write_u32_len_8(low, buf);
         return buf;
         
-    } else { /* 17-20 digits */
-        tmp = val / 100000000;
-        low = (u32)(val - tmp * 100000000); /* (val % 100000000) */
-        hgh = (u32)(tmp / 10000);
-        mid = (u32)(tmp - hgh * 10000); /* (tmp % 10000) */
+    } else {                                        /* 17-20 digits */
+        tmp = val / 100000000;                      /* (val / 100000000) */
+        low = (u32)(val - tmp * 100000000);         /* (val % 100000000) */
+        hgh = (u32)(tmp / 10000);                   /* (tmp / 10000) */
+        mid = (u32)(tmp - hgh * 10000);             /* (tmp % 10000) */
         buf = write_u64_len_5_8((u32)hgh, buf);
         buf = write_u32_len_4(mid, buf);
         buf = write_u32_len_8(low, buf);
@@ -5142,7 +5768,7 @@ static_inline u8 *write_u64(u64 val, u8 *buf) {
  * Number Writer
  *============================================================================*/
 
-#if !YYJSON_DISABLE_FP_WRITER
+#if YYJSON_HAS_IEEE_754 && !YYJSON_DISABLE_FAST_FP_CONV
 
 /** Trailing zero count table for number 0 to 99.
     (generate with misc/make_tables.c) */
@@ -5163,12 +5789,12 @@ static const u8 dec_trailing_zero_table[] = {
 static_inline u8 *write_u64_len_1_to_16(u64 val, u8 *buf) {
     u64 hgh;
     u32 low;
-    if (val < 100000000) { /* 1-8 digits */
+    if (val < 100000000) {                          /* 1-8 digits */
         buf = write_u32_len_1_8((u32)val, buf);
         return buf;
-    } else { /* 9-16 digits */
-        hgh = val / 100000000;
-        low = (u32)(val - hgh * 100000000); /* (val % 100000000) */
+    } else {                                        /* 9-16 digits */
+        hgh = val / 100000000;                      /* (val / 100000000) */
+        low = (u32)(val - hgh * 100000000);         /* (val % 100000000) */
         buf = write_u32_len_1_8((u32)hgh, buf);
         buf = write_u32_len_8(low, buf);
         return buf;
@@ -5179,19 +5805,19 @@ static_inline u8 *write_u64_len_1_to_16(u64 val, u8 *buf) {
 static_inline u8 *write_u64_len_1_to_17(u64 val, u8 *buf) {
     u64 hgh;
     u32 mid, low, one;
-    if (val >= (u64)100000000 * 10000000) { /* len: 16 to 17 */
-        hgh = val / 100000000;
-        low = (u32)(val - hgh * 100000000); /* (val % 100000000) */
-        one = (u32)(hgh / 100000000);
-        mid = (u32)(hgh - (u64)one * 100000000); /* (hgh % 100000000) */
-        *buf = (u8)one + (u8)'0';
+    if (val >= (u64)100000000 * 10000000) {         /* len: 16 to 17 */
+        hgh = val / 100000000;                      /* (val / 100000000) */
+        low = (u32)(val - hgh * 100000000);         /* (val % 100000000) */
+        one = (u32)(hgh / 100000000);               /* (hgh / 100000000) */
+        mid = (u32)(hgh - (u64)one * 100000000);    /* (hgh % 100000000) */
+        *buf = (u8)((u8)one + (u8)'0');
         buf += one > 0;
         buf = write_u32_len_8(mid, buf);
         buf = write_u32_len_8(low, buf);
         return buf;
-    } else if (val >= (u64)100000000){ /* len: 9 to 15 */
-        hgh = val / 100000000;
-        low = (u32)(val - hgh * 100000000); /* (val % 100000000) */
+    } else if (val >= (u64)100000000){              /* len: 9 to 15 */
+        hgh = val / 100000000;                      /* (val / 100000000) */
+        low = (u32)(val - hgh * 100000000);         /* (val % 100000000) */
         buf = write_u32_len_1_8((u32)hgh, buf);
         buf = write_u32_len_8(low, buf);
         return buf;
@@ -5202,46 +5828,47 @@ static_inline u8 *write_u64_len_1_to_17(u64 val, u8 *buf) {
 }
 
 /**
- Write an unsigned integer with a length of 16 to 17 with trailing zero trimmed.
+ Write an unsigned integer with a length of 15 to 17 with trailing zero trimmed.
+ These digits are named as "aabbccddeeffgghhii" here.
+ For example, input 1234567890123000, output "1234567890123".
  */
 static_inline u8 *write_u64_len_15_to_17_trim(u8 *buf, u64 sig) {
-    /* The decimal digits are named as abbccddeeffgghhii. */
-    bool lz;
-    u32 tz1, tz2, tz;
+    bool lz;                                        /* leading zero */
+    u32 tz1, tz2, tz;                               /* trailing zero */
     
     u32 abbccddee = (u32)(sig / 100000000);
     u32 ffgghhii = (u32)(sig - (u64)abbccddee * 100000000);
-    u32 abbcc = abbccddee / 10000;
-    u32 ddee = abbccddee - abbcc * 10000;
-    u32 abb = (u32)(((u64)abbcc * 167773) >> 24); /* abbcc / 100 */
-    u32 a = (abb * 41) >> 12; /* abb / 100 */
-    u32 bb = abb - a * 100;
-    u32 cc = abbcc - abb * 100;
+    u32 abbcc = abbccddee / 10000;                  /* (abbccddee / 10000) */
+    u32 ddee = abbccddee - abbcc * 10000;           /* (abbccddee % 10000) */
+    u32 abb = (u32)(((u64)abbcc * 167773) >> 24);   /* (abbcc / 100) */
+    u32 a = (abb * 41) >> 12;                       /* (abb / 100) */
+    u32 bb = abb - a * 100;                         /* (abb % 100) */
+    u32 cc = abbcc - abb * 100;                     /* (abbcc % 100) */
     
     /* write abbcc */
     buf[0] = (u8)(a + '0');
     buf += a > 0;
     lz = bb < 10 && a == 0;
-    ((v16 *)buf)[0] = *(v16 *)&(digit_table[bb * 2 + lz]);
+    ((v16 *)buf)[0] = *(const v16 *)(digit_table + (bb * 2 + lz));
     buf -= lz;
-    ((v16 *)buf)[1] = ((v16 *)digit_table)[cc];
+    ((v16 *)buf)[1] = ((const v16 *)digit_table)[cc];
     
     if (ffgghhii) {
-        u32 dd = (ddee * 5243) >> 19; /* (ddee / 100) */
-        u32 ee = ddee - dd * 100; /* (ddee % 100) */
+        u32 dd = (ddee * 5243) >> 19;               /* (ddee / 100) */
+        u32 ee = ddee - dd * 100;                   /* (ddee % 100) */
         u32 ffgg = (u32)(((u64)ffgghhii * 109951163) >> 40); /* (val / 10000) */
-        u32 hhii = ffgghhii - ffgg * 10000; /* (val % 10000) */
-        u32 ff = (ffgg * 5243) >> 19; /* (aabb / 100) */
-        u32 gg = ffgg - ff * 100; /* (aabb % 100) */
-        ((v16 *)buf)[2] = ((v16 *)digit_table)[dd];
-        ((v16 *)buf)[3] = ((v16 *)digit_table)[ee];
-        ((v16 *)buf)[4] = ((v16 *)digit_table)[ff];
-        ((v16 *)buf)[5] = ((v16 *)digit_table)[gg];
+        u32 hhii = ffgghhii - ffgg * 10000;         /* (val % 10000) */
+        u32 ff = (ffgg * 5243) >> 19;               /* (aabb / 100) */
+        u32 gg = ffgg - ff * 100;                   /* (aabb % 100) */
+        ((v16 *)buf)[2] = ((const v16 *)digit_table)[dd];
+        ((v16 *)buf)[3] = ((const v16 *)digit_table)[ee];
+        ((v16 *)buf)[4] = ((const v16 *)digit_table)[ff];
+        ((v16 *)buf)[5] = ((const v16 *)digit_table)[gg];
         if (hhii) {
-            u32 hh = (hhii * 5243) >> 19; /* (ccdd / 100) */
-            u32 ii = hhii - hh * 100; /* (ccdd % 100) */
-            ((v16 *)buf)[6] = ((v16 *)digit_table)[hh];
-            ((v16 *)buf)[7] = ((v16 *)digit_table)[ii];
+            u32 hh = (hhii * 5243) >> 19;           /* (ccdd / 100) */
+            u32 ii = hhii - hh * 100;               /* (ccdd % 100) */
+            ((v16 *)buf)[6] = ((const v16 *)digit_table)[hh];
+            ((v16 *)buf)[7] = ((const v16 *)digit_table)[ii];
             tz1 = dec_trailing_zero_table[hh];
             tz2 = dec_trailing_zero_table[ii];
             tz = ii ? tz2 : (tz1 + 2);
@@ -5256,10 +5883,10 @@ static_inline u8 *write_u64_len_15_to_17_trim(u8 *buf, u64 sig) {
         }
     } else {
         if (ddee) {
-            u32 dd = (ddee * 5243) >> 19; /* (ddee / 100) */
-            u32 ee = ddee - dd * 100; /* (ddee % 100) */
-            ((v16 *)buf)[2] = ((v16 *)digit_table)[dd];
-            ((v16 *)buf)[3] = ((v16 *)digit_table)[ee];
+            u32 dd = (ddee * 5243) >> 19;           /* (ddee / 100) */
+            u32 ee = ddee - dd * 100;               /* (ddee % 100) */
+            ((v16 *)buf)[2] = ((const v16 *)digit_table)[dd];
+            ((v16 *)buf)[3] = ((const v16 *)digit_table)[ee];
             tz1 = dec_trailing_zero_table[dd];
             tz2 = dec_trailing_zero_table[ee];
             tz = ee ? tz2 : (tz1 + 2);
@@ -5282,13 +5909,13 @@ static_inline u8 *write_f64_exp(i32 exp, u8 *buf) {
     exp = exp < 0 ? -exp : exp;
     if (exp < 100) {
         u32 lz = exp < 10;
-        *(v16 *)&buf[0] = *(v16 *)&digit_table[exp * 2 + lz];
+        *(v16 *)&buf[0] = *(const v16 *)(digit_table + ((u32)exp * 2 + lz));
         return buf + 2 - lz;
     } else {
-        u32 hi = (exp * 656) >> 16; /* exp / 100 */
-        u32 lo = exp - hi * 100; /* exp % 100 */
-        buf[0] = (u8)hi + (u8)'0';
-        *(v16 *)&buf[1] = *(v16 *)&digit_table[lo * 2];
+        u32 hi = ((u32)exp * 656) >> 16;            /* exp / 100 */
+        u32 lo = (u32)exp - hi * 100;               /* exp % 100 */
+        buf[0] = (u8)((u8)hi + (u8)'0');
+        *(v16 *)&buf[1] = *(const v16 *)(digit_table + (lo * 2));
         return buf + 3;
     }
 }
@@ -5323,7 +5950,7 @@ static_inline u64 round_to_odd(u64 hi, u64 lo, u64 cp) {
  @param exp_dec The output value of exponent in decimal.
  @warning The input double number should not be 0, inf, nan.
  */
-static_inline void f64_bin_to_dec(u64 sig_raw, i32 exp_raw,
+static_inline void f64_bin_to_dec(u64 sig_raw, u32 exp_raw,
                                   u64 sig_bin, i32 exp_bin,
                                   u64 *sig_dec, i32 *exp_dec) {
     
@@ -5383,30 +6010,33 @@ static_inline void f64_bin_to_dec(u64 sig_raw, i32 exp_raw,
     *exp_dec = k;
 }
 
-/** 
- Write a double number (require 32 bytes). 
+/**
+ Write a double number (requires 32 bytes buffer).
  
- We follows the ECMAScript specification to print floating point numbers, 
+ We follows the ECMAScript specification to print floating point numbers,
  but with the following changes:
  1. Keep the negative sign of 0.0 to preserve input information.
  2. Keep decimal point to indicate the number is floating point.
  3. Remove positive sign of exponent part.
 */
-static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, bool allow_nan_and_inf) {
+static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, yyjson_write_flag flg) {
     u64 sig_bin, sig_dec, sig_raw;
     i32 exp_bin, exp_dec, sig_len, dot_pos, i, max;
     u32 exp_raw, hi, lo;
     u8 *hdr, *num_hdr, *num_end, *dot_end;
     bool sign;
     
-    /* decode from raw bytes from IEEE-754 double format. */
+    /* decode raw bytes from IEEE-754 double format. */
     sign = (bool)(raw >> (F64_BITS - 1));
     sig_raw = raw & F64_SIG_MASK;
-    exp_raw = (raw & F64_EXP_MASK) >> F64_SIG_BITS;
+    exp_raw = (u32)((raw & F64_EXP_MASK) >> F64_SIG_BITS);
     
     /* return inf and nan */
     if (unlikely(exp_raw == ((u32)1 << F64_EXP_BITS) - 1)) {
-        if (allow_nan_and_inf) {
+        if (flg & YYJSON_WRITE_INF_AND_NAN_AS_NULL) {
+            *(v32 *)&buf[0] = v32_make('n', 'u', 'l', 'l');
+            return buf + 4;
+        } else if (flg & YYJSON_WRITE_ALLOW_INF_AND_NAN) {
             if (sig_raw == 0) {
                 buf[0] = '-';
                 buf += sign;
@@ -5423,7 +6053,7 @@ static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, bool allow_nan_and_inf) {
         }
     }
     
-    /* add sign for all finite double value, include -0.0 */
+    /* add sign for all finite double value, including 0.0 and inf */
     buf[0] = '-';
     buf += sign;
     hdr = buf;
@@ -5437,7 +6067,7 @@ static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, bool allow_nan_and_inf) {
     
     if (likely(exp_raw != 0)) {
         /* normal number */
-        sig_bin =  sig_raw | ((u64)1 << F64_SIG_BITS);
+        sig_bin = sig_raw | ((u64)1 << F64_SIG_BITS);
         exp_bin = (i32)exp_raw - F64_EXP_BIAS - F64_SIG_BITS;
         
         /* fast path for small integer number without fraction */
@@ -5445,7 +6075,6 @@ static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, bool allow_nan_and_inf) {
             if (u64_tz_bits(sig_bin) >= (u32)-exp_bin) {
                 /* number is integer in range 1 to 0x1FFFFFFFFFFFFF */
                 sig_dec = sig_bin >> -exp_bin;
-                exp_dec = 0;
                 buf = write_u64_len_1_to_16(sig_dec, buf);
                 *(v16 *)buf = v16_make('.', '0');
                 buf += 2;
@@ -5518,7 +6147,7 @@ static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, bool allow_nan_and_inf) {
             buf--;
             exp_dec++;
         } while (*buf == '0');
-        exp_dec += buf - hdr - 2;
+        exp_dec += (i32)(buf - hdr - 2);
         buf += (*buf != '.');
         buf[0] = 'e';
         buf++;
@@ -5527,10 +6156,10 @@ static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, bool allow_nan_and_inf) {
         buf[0] = '-';
         buf++;
         exp_dec = -exp_dec;
-        hi = (exp_dec * 656) >> 16; /* exp / 100 */
-        lo = exp_dec - hi * 100; /* exp % 100 */
-        buf[0] = (u8)hi + (u8)'0';
-        *(v16 *)&buf[1] = *(v16 *)&digit_table[lo * 2];
+        hi = ((u32)exp_dec * 656) >> 16; /* exp / 100 */
+        lo = (u32)exp_dec - hi * 100; /* exp % 100 */
+        buf[0] = (u8)((u8)hi + (u8)'0');
+        *(v16 *)&buf[1] = *(const v16 *)(digit_table + (lo * 2));
         buf += 3;
         return buf;
     }
@@ -5538,44 +6167,75 @@ static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, bool allow_nan_and_inf) {
 
 #else /* FP_WRITER */
 
-/** Write a double number (require 32 bytes). */
-static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, bool allow_nan_and_inf) {
-    f64 val = f64_from_raw(raw);
-    if (f64_isfinite(val)) {
-#if _MSC_VER >= 1400
-        int len = sprintf_s((char *)buf, 32, "%.17g", val);
+/** Write a double number (requires 32 bytes buffer). */
+static_noinline u8 *write_f64_raw(u8 *buf, u64 raw, yyjson_write_flag flg) {
+    /*
+     For IEEE 754, `DBL_DECIMAL_DIG` is 17 for round-trip.
+     For non-IEEE formats, 17 is used to avoid buffer overflow,
+     round-trip is not guaranteed.
+     */
+#if defined(DBL_DECIMAL_DIG)
+    int dig = DBL_DECIMAL_DIG > 17 ? 17 : DBL_DECIMAL_DIG;
 #else
-        int len = sprintf((char *)buf, "%.17g", val);
+    int dig = 17;
 #endif
-        return buf + len;
-    } else {
-        /* nan or inf */
-        if (allow_nan_and_inf) {
-            if (f64_isinf(val)) {
-                buf[0] = '-';
-                buf += val < 0;
-                *(v32 *)&buf[0] = v32_make('I', 'n', 'f', 'i');
-                *(v32 *)&buf[4] = v32_make('n', 'i', 't', 'y');
-                buf += 8;
-                return buf;
-            } else {
+    
+    /*
+     The snprintf() function is locale-dependent. For currently known locales,
+     (en, zh, ja, ko, am, he, hi) use '.' as the decimal point, while other
+     locales use ',' as the decimal point. we need to replace ',' with '.'
+     to avoid the locale setting.
+     */
+    f64 val = f64_from_raw(raw);
+#if YYJSON_MSC_VER >= 1400
+    int len = sprintf_s((char *)buf, 32, "%.*g", dig, val);
+#elif defined(snprintf) || (YYJSON_STDC_VER >= 199901L)
+    int len = snprintf((char *)buf, 32, "%.*g", dig, val);
+#else
+    int len = sprintf((char *)buf, "%.*g", dig, val);
+#endif
+    
+    u8 *cur = buf;
+    if (unlikely(len < 1)) return NULL;
+    cur += (*cur == '-');
+    if (unlikely(!digi_is_digit(*cur))) {
+        /* nan, inf, or bad output */
+        if (flg & YYJSON_WRITE_INF_AND_NAN_AS_NULL) {
+            *(v32 *)&buf[0] = v32_make('n', 'u', 'l', 'l');
+            return buf + 4;
+        } else if (flg & YYJSON_WRITE_ALLOW_INF_AND_NAN) {
+            if (*cur == 'i') {
+                *(v32 *)&cur[0] = v32_make('I', 'n', 'f', 'i');
+                *(v32 *)&cur[4] = v32_make('n', 'i', 't', 'y');
+                cur += 8;
+                return cur;
+            } else if (*cur == 'n') {
                 *(v32 *)&buf[0] = v32_make('N', 'a', 'N', '\0');
                 return buf + 3;
             }
-        } else {
-            return NULL;
+        }
+        return NULL;
+    } else {
+        /* finite number */
+        int i = 0;
+        for (; i < len; i++) {
+            if (buf[i] == ',') {
+                buf[i] = '.';
+                break;
+            }
         }
     }
+    return buf + len;
 }
 
 #endif /* FP_WRITER */
 
-/** Write a JSON number (require 32 bytes). */
+/** Write a JSON number (requires 32 bytes buffer). */
 static_inline u8 *write_number(u8 *cur, yyjson_val *val,
-                               bool allow_nan_and_inf) {
+                               yyjson_write_flag flg) {
     if (val->tag & YYJSON_SUBTYPE_REAL) {
         u64 raw = val->uni.u64;
-        return write_f64_raw(cur, raw, allow_nan_and_inf);
+        return write_f64_raw(cur, raw, flg);
     } else {
         u64 pos = val->uni.u64;
         u64 neg = ~pos + 1;
@@ -5823,7 +6483,7 @@ static const u8 esc_single_char_table[512] = {
     ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '
 };
 
-/** Returns escape table with options. */
+/** Returns the escape table with options. */
 static_inline const char_esc_type *get_esc_table_with_flag(
     yyjson_read_flag flg) {
     if (unlikely(flg & YYJSON_WRITE_ESCAPE_UNICODE)) {
@@ -5841,11 +6501,17 @@ static_inline const char_esc_type *get_esc_table_with_flag(
     }
 }
 
+/** Write raw string. */
+static_inline u8 *write_raw(u8 *cur, const u8 *raw, usize raw_len) {
+    memcpy(cur, raw, raw_len);
+    return cur += raw_len;
+}
+
 /**
- Write UTF-8 string (require len * 6 + 2 bytes).
+ Write UTF-8 string (requires len * 6 + 2 bytes buffer).
  If the input string is not valid UTF-8 encoding, undefined behavior may occur.
  @param cur Buffer cursor.
- @param str A valid UTF-8 string with null-terminator.
+ @param str A valid UTF-8 string, null-terminator is not required.
  @param str_len Length of string in bytes.
  @param esc_table Escape type table for character escaping.
  @return The buffer cursor after string.
@@ -5861,25 +6527,40 @@ copy_char:
     /*
      Copy continuous unescaped char, loop unrolling, same as the following code:
      
-         while (true) repeat16({
+         while (str < end) (
             if (unlikely(esc_table[*str] != CHAR_ESC_NONE)) break;
             *cur++ = *str++;
-         });
+         );
      */
 #define expr_jump(i) \
     if (unlikely(esc_table[str[i]] != CHAR_ESC_NONE)) goto stop_char_##i;
-
+    
 #define expr_stop(i) \
     stop_char_##i: \
     memcpy(cur, str, i); \
     cur += i; str += i; goto copy_next;
-
-    repeat16_incr(expr_jump);
-    memcpy(cur, str, 16);
-    cur += 16; str += 16;
-    goto copy_char;
+    
+    while (end - str >= 16) {
+        repeat16_incr(expr_jump);
+        memcpy(cur, str, 16);
+        cur += 16; str += 16;
+    }
+    
+    while (end - str >= 4) {
+        repeat4_incr(expr_jump);
+        memcpy(cur, str, 4);
+        cur += 4; str += 4;
+    }
+    
+    while (str < end) {
+        expr_jump(0);
+        *cur++ = *str++;
+    }
+    *cur++ = '"';
+    return cur;
+    
     repeat16_incr(expr_stop);
-
+    
 #undef expr_jump
 #undef expr_stop
     
@@ -5891,14 +6572,14 @@ copy_next:
                 goto copy_char;
             }
             case CHAR_ESC_ASCII: {
-                *(v16 *)cur = ((v16 *)esc_single_char_table)[*str];
+                *(v16 *)cur = ((const v16 *)esc_single_char_table)[*str];
                 cur += 2;
                 str += 1;
                 continue;
             }
             case CHAR_ESC_UTF8_1: {
                 ((v32 *)cur)[0] = v32_make('\\', 'u', '0', '0');
-                ((v16 *)cur)[2] = ((v16 *)esc_hex_char_table)[*str];
+                ((v16 *)cur)[2] = ((const v16 *)esc_hex_char_table)[*str];
                 cur += 6;
                 str += 1;
                 continue;
@@ -5907,8 +6588,8 @@ copy_next:
                 u16 u = (u16)(((u16)(str[0] & 0x1F) << 6) |
                               ((u16)(str[1] & 0x3F) << 0));
                 ((v16 *)cur)[0] = v16_make('\\', 'u');
-                ((v16 *)cur)[1] = ((v16 *)esc_hex_char_table)[u >> 8];
-                ((v16 *)cur)[2] = ((v16 *)esc_hex_char_table)[u & 0xFF];
+                ((v16 *)cur)[1] = ((const v16 *)esc_hex_char_table)[u >> 8];
+                ((v16 *)cur)[2] = ((const v16 *)esc_hex_char_table)[u & 0xFF];
                 cur += 6;
                 str += 2;
                 continue;
@@ -5918,8 +6599,8 @@ copy_next:
                               ((u16)(str[1] & 0x3F) << 6) |
                               ((u16)(str[2] & 0x3F) << 0));
                 ((v16 *)cur)[0] = v16_make('\\', 'u');
-                ((v16 *)cur)[1] = ((v16 *)esc_hex_char_table)[u >> 8];
-                ((v16 *)cur)[2] = ((v16 *)esc_hex_char_table)[u & 0xFF];
+                ((v16 *)cur)[1] = ((const v16 *)esc_hex_char_table)[u >> 8];
+                ((v16 *)cur)[2] = ((const v16 *)esc_hex_char_table)[u & 0xFF];
                 cur += 6;
                 str += 3;
                 continue;
@@ -5934,11 +6615,11 @@ copy_next:
                 hi = (u >> 10) + 0xD800;
                 lo = (u & 0x3FF) + 0xDC00;
                 ((v16 *)cur)[0] = v16_make('\\', 'u');
-                ((v16 *)cur)[1] = ((v16 *)esc_hex_char_table)[hi >> 8];
-                ((v16 *)cur)[2] = ((v16 *)esc_hex_char_table)[hi & 0xFF];
+                ((v16 *)cur)[1] = ((const v16 *)esc_hex_char_table)[hi >> 8];
+                ((v16 *)cur)[2] = ((const v16 *)esc_hex_char_table)[hi & 0xFF];
                 ((v16 *)cur)[3] = v16_make('\\', 'u');
-                ((v16 *)cur)[4] = ((v16 *)esc_hex_char_table)[lo >> 8];
-                ((v16 *)cur)[5] = ((v16 *)esc_hex_char_table)[lo & 0xFF];
+                ((v16 *)cur)[4] = ((const v16 *)esc_hex_char_table)[lo >> 8];
+                ((v16 *)cur)[5] = ((const v16 *)esc_hex_char_table)[lo & 0xFF];
                 cur += 12;
                 str += 4;
                 continue;
@@ -5957,22 +6638,22 @@ copy_end:
  * Writer Utilities
  *============================================================================*/
 
-/** Write null (require 8 bytes). */
+/** Write null (requires 8 bytes buffer). */
 static_inline u8 *write_null(u8 *cur) {
     *(v64 *)cur = v64_make('n', 'u', 'l', 'l', ',', '\n', 0, 0);
     return cur + 4;
 }
 
-/** Write bool (require 8 bytes). */
+/** Write bool (requires 8 bytes buffer). */
 static_inline u8 *write_bool(u8 *cur, bool val) {
     *(v64 *)cur = val ? v64_make('t', 'r', 'u', 'e', ',', '\n', 0, 0) :
                         v64_make('f', 'a', 'l', 's', 'e', ',', '\n', 0);
     return cur + 5 - val;
 }
 
-/** Write indent (require level * 4 bytes). */
+/** Write indent (requires level * 4 bytes buffer). */
 static_inline u8 *write_indent(u8 *cur, usize level) {
-    while (level --> 0) {
+    while (level-- > 0) {
         *(v32 *)cur = v32_make(' ', ' ', ' ', ' ');
         cur += 4;
     }
@@ -5988,17 +6669,9 @@ static bool write_dat_to_file(const char *path, u8 *dat, usize len,
     err->code = YYJSON_WRITE_ERROR_##_code; \
     if (file) fclose(file); \
     return false; \
-} while(false)
+} while (false)
     
-    FILE *file = NULL;
-    
-#if _MSC_VER >= 1400
-    if (fopen_s(&file, path, "wb") != 0) {
-        return_err(FILE_OPEN, "file opening failed");
-    }
-#else
-    file = fopen(path, "wb");
-#endif
+    FILE *file = fopen_writeonly(path);
     if (file == NULL) {
         return_err(FILE_OPEN, "file opening failed");
     }
@@ -6009,8 +6682,8 @@ static bool write_dat_to_file(const char *path, u8 *dat, usize len,
         file = NULL;
         return_err(FILE_WRITE, "file closing failed");
     }
-    
     return true;
+    
 #undef return_err
 }
 
@@ -6049,26 +6722,33 @@ static_inline u8 *yyjson_write_single(yyjson_val *val,
     err->code = YYJSON_WRITE_ERROR_##_code; \
     err->msg = _msg; \
     return NULL; \
-} while(false)
+} while (false)
     
 #define incr_len(_len) do { \
     hdr = (u8 *)alc.malloc(alc.ctx, _len); \
     if (!hdr) goto fail_alloc; \
     cur = hdr; \
-} while(false)
+} while (false)
     
 #define check_str_len(_len) do { \
     if ((USIZE_MAX < U64_MAX) && (_len >= (USIZE_MAX - 16) / 6)) \
         goto fail_alloc; \
-} while(false)
+} while (false)
     
     u8 *hdr = NULL, *cur;
     usize str_len;
     const u8 *str_ptr;
-    bool allow_nan_and_inf = (flg & YYJSON_WRITE_ALLOW_INF_AND_NAN) > 0;
     const char_esc_type *esc_table = get_esc_table_with_flag(flg);
     
     switch (unsafe_yyjson_get_type(val)) {
+        case YYJSON_TYPE_RAW:
+            str_len = unsafe_yyjson_get_len(val);
+            str_ptr = (const u8 *)unsafe_yyjson_get_str(val);
+            check_str_len(str_len);
+            incr_len(str_len + 1);
+            cur = write_raw(cur, str_ptr, str_len);
+            break;
+            
         case YYJSON_TYPE_STR:
             str_len = unsafe_yyjson_get_len(val);
             str_ptr = (const u8 *)unsafe_yyjson_get_str(val);
@@ -6079,7 +6759,7 @@ static_inline u8 *yyjson_write_single(yyjson_val *val,
             
         case YYJSON_TYPE_NUM:
             incr_len(32);
-            cur = write_number(cur, val, allow_nan_and_inf);
+            cur = write_number(cur, val, flg);
             if (unlikely(!cur)) goto fail_num;
             break;
             
@@ -6110,7 +6790,7 @@ static_inline u8 *yyjson_write_single(yyjson_val *val,
     }
     
     *cur = '\0';
-    *dat_len = cur - hdr;
+    *dat_len = (usize)(cur - hdr);
     memset(err, 0, sizeof(yyjson_write_err));
     return hdr;
     
@@ -6128,9 +6808,9 @@ fail_num:
 
 /** Write JSON document minify.
     The root of this document should be a non-empty container. */
-static_inline u8 *yyjson_write_minify(yyjson_doc *doc,
-                                      yyjson_write_flag flg,
-                                      yyjson_alc alc,
+static_inline u8 *yyjson_write_minify(const yyjson_doc *doc,
+                                      const yyjson_write_flag flg,
+                                      const yyjson_alc alc,
                                       usize *dat_len,
                                       yyjson_write_err *err) {
     
@@ -6140,10 +6820,10 @@ static_inline u8 *yyjson_write_minify(yyjson_doc *doc,
     err->msg = _msg; \
     if (hdr) alc.free(alc.ctx, hdr); \
     return NULL; \
-} while(false)
+} while (false)
     
 #define incr_len(_len) do { \
-    ext_len = _len; \
+    ext_len = (usize)(_len); \
     if (unlikely((u8 *)(cur + ext_len) >= (u8 *)ctx)) { \
         alc_inc = yyjson_max(alc_len / 2, ext_len); \
         alc_inc = size_align_up(alc_inc, sizeof(yyjson_write_ctx)); \
@@ -6151,20 +6831,20 @@ static_inline u8 *yyjson_write_minify(yyjson_doc *doc,
         alc_len += alc_inc; \
         tmp = (u8 *)alc.realloc(alc.ctx, hdr, alc_len); \
         if (unlikely(!tmp)) goto fail_alloc; \
-        ctx_len = end - (u8 *)ctx; \
-        ctx_tmp = (yyjson_write_ctx *)(tmp + (alc_len - ctx_len)); \
+        ctx_len = (usize)(end - (u8 *)ctx); \
+        ctx_tmp = (yyjson_write_ctx *)(void *)(tmp + (alc_len - ctx_len)); \
         memmove((void *)ctx_tmp, (void *)(tmp + ((u8 *)ctx - hdr)), ctx_len); \
         ctx = ctx_tmp; \
         cur = tmp + (cur - hdr); \
         end = tmp + alc_len; \
         hdr = tmp; \
     } \
-} while(false)
+} while (false)
     
 #define check_str_len(_len) do { \
     if ((USIZE_MAX < U64_MAX) && (_len >= (USIZE_MAX - 16) / 6)) \
         goto fail_alloc; \
-} while(false)
+} while (false)
     
     yyjson_val *val;
     yyjson_type val_type;
@@ -6174,7 +6854,6 @@ static_inline u8 *yyjson_write_minify(yyjson_doc *doc,
     yyjson_write_ctx *ctx, *ctx_tmp;
     usize alc_len, alc_inc, ctx_len, ext_len, str_len;
     const u8 *str_ptr;
-    bool allow_nan_and_inf = (flg & YYJSON_WRITE_ALLOW_INF_AND_NAN) > 0;
     const char_esc_type *esc_table = get_esc_table_with_flag(flg);
     
     alc_len = doc->val_read * YYJSON_WRITER_ESTIMATED_MINIFY_RATIO + 64;
@@ -6183,7 +6862,7 @@ static_inline u8 *yyjson_write_minify(yyjson_doc *doc,
     if (!hdr) goto fail_alloc;
     cur = hdr;
     end = hdr + alc_len;
-    ctx = (yyjson_write_ctx *)end;
+    ctx = (yyjson_write_ctx *)(void *)end;
     
 doc_begin:
     val = doc->root;
@@ -6196,6 +6875,15 @@ doc_begin:
 val_begin:
     val_type = unsafe_yyjson_get_type(val);
     switch (val_type) {
+        case YYJSON_TYPE_RAW:
+            str_len = unsafe_yyjson_get_len(val);
+            str_ptr = (const u8 *)unsafe_yyjson_get_str(val);
+            check_str_len(str_len);
+            incr_len(str_len + 2);
+            cur = write_raw(cur, str_ptr, str_len);
+            *cur++ = ',';
+            break;
+            
         case YYJSON_TYPE_STR:
             is_key = ((u8)ctn_obj & (u8)~ctn_len);
             str_len = unsafe_yyjson_get_len(val);
@@ -6208,7 +6896,7 @@ val_begin:
             
         case YYJSON_TYPE_NUM:
             incr_len(32);
-            cur = write_number(cur, val, allow_nan_and_inf);
+            cur = write_number(cur, val, flg);
             if (unlikely(!cur)) goto fail_num;
             *cur++ = ',';
             break;
@@ -6270,7 +6958,7 @@ ctn_end:
     
 doc_end:
     *--cur = '\0';
-    *dat_len = cur - hdr;
+    *dat_len = (usize)(cur - hdr);
     memset(err, 0, sizeof(yyjson_write_err));
     return hdr;
     
@@ -6288,9 +6976,9 @@ fail_num:
 
 /** Write JSON document pretty.
     The root of this document should be a non-empty container. */
-static_inline u8 *yyjson_write_pretty(yyjson_doc *doc,
-                                      yyjson_write_flag flg,
-                                      yyjson_alc alc,
+static_inline u8 *yyjson_write_pretty(const yyjson_doc *doc,
+                                      const yyjson_write_flag flg,
+                                      const yyjson_alc alc,
                                       usize *dat_len,
                                       yyjson_write_err *err) {
     
@@ -6300,10 +6988,10 @@ static_inline u8 *yyjson_write_pretty(yyjson_doc *doc,
     err->msg = _msg; \
     if (hdr) alc.free(alc.ctx, hdr); \
     return NULL; \
-} while(false)
+} while (false)
     
 #define incr_len(_len) do { \
-    ext_len = _len; \
+    ext_len = (usize)(_len); \
     if (unlikely((u8 *)(cur + ext_len) >= (u8 *)ctx)) { \
         alc_inc = yyjson_max(alc_len / 2, ext_len); \
         alc_inc = size_align_up(alc_inc, sizeof(yyjson_write_ctx)); \
@@ -6311,20 +6999,20 @@ static_inline u8 *yyjson_write_pretty(yyjson_doc *doc,
         alc_len += alc_inc; \
         tmp = (u8 *)alc.realloc(alc.ctx, hdr, alc_len); \
         if (unlikely(!tmp)) goto fail_alloc; \
-        ctx_len = end - (u8 *)ctx; \
-        ctx_tmp = (yyjson_write_ctx *)(tmp + (alc_len - ctx_len)); \
+        ctx_len = (usize)(end - (u8 *)ctx); \
+        ctx_tmp = (yyjson_write_ctx *)(void *)(tmp + (alc_len - ctx_len)); \
         memmove((void *)ctx_tmp, (void *)(tmp + ((u8 *)ctx - hdr)), ctx_len); \
         ctx = ctx_tmp; \
         cur = tmp + (cur - hdr); \
         end = tmp + alc_len; \
         hdr = tmp; \
     } \
-} while(false)
+} while (false)
     
 #define check_str_len(_len) do { \
     if ((USIZE_MAX < U64_MAX) && (_len >= (USIZE_MAX - 16) / 6)) \
         goto fail_alloc; \
-} while(false)
+} while (false)
     
     yyjson_val *val;
     yyjson_type val_type;
@@ -6334,7 +7022,6 @@ static_inline u8 *yyjson_write_pretty(yyjson_doc *doc,
     yyjson_write_ctx *ctx, *ctx_tmp;
     usize alc_len, alc_inc, ctx_len, ext_len, str_len, level;
     const u8 *str_ptr;
-    bool allow_nan_and_inf = (flg & YYJSON_WRITE_ALLOW_INF_AND_NAN) > 0;
     const char_esc_type *esc_table = get_esc_table_with_flag(flg);
     
     alc_len = doc->val_read * YYJSON_WRITER_ESTIMATED_PRETTY_RATIO + 64;
@@ -6343,7 +7030,7 @@ static_inline u8 *yyjson_write_pretty(yyjson_doc *doc,
     if (!hdr) goto fail_alloc;
     cur = hdr;
     end = hdr + alc_len;
-    ctx = (yyjson_write_ctx *)end;
+    ctx = (yyjson_write_ctx *)(void *)end;
     
 doc_begin:
     val = doc->root;
@@ -6358,6 +7045,16 @@ doc_begin:
 val_begin:
     val_type = unsafe_yyjson_get_type(val);
     switch (val_type) {
+        case YYJSON_TYPE_RAW:
+            str_len = unsafe_yyjson_get_len(val);
+            str_ptr = (const u8 *)unsafe_yyjson_get_str(val);
+            check_str_len(str_len);
+            incr_len(str_len + 3);
+            cur = write_raw(cur, str_ptr, str_len);
+            *cur++ = ',';
+            *cur++ = '\n';
+            break;
+            
         case YYJSON_TYPE_STR:
             is_key = ((u8)ctn_obj & (u8)~ctn_len);
             no_indent = ((u8)ctn_obj & (u8)ctn_len);
@@ -6375,7 +7072,7 @@ val_begin:
             no_indent = ((u8)ctn_obj & (u8)ctn_len);
             incr_len(32 + (no_indent ? 0 : level * 4));
             cur = write_indent(cur, no_indent ? 0 : level);
-            cur = write_number(cur, val, allow_nan_and_inf);
+            cur = write_number(cur, val, flg);
             if (unlikely(!cur)) goto fail_num;
             *cur++ = ',';
             *cur++ = '\n';
@@ -6453,7 +7150,7 @@ ctn_end:
     
 doc_end:
     *cur = '\0';
-    *dat_len = cur - hdr;
+    *dat_len = (usize)(cur - hdr);
     memset(err, 0, sizeof(yyjson_write_err));
     return hdr;
     
@@ -6469,9 +7166,9 @@ fail_num:
 #undef check_str_len
 }
 
-char *yyjson_write_opts(yyjson_doc *doc,
+char *yyjson_write_opts(const yyjson_doc *doc,
                         yyjson_write_flag flg,
-                        yyjson_alc *alc_ptr,
+                        const yyjson_alc *alc_ptr,
                         usize *dat_len,
                         yyjson_write_err *err) {
     
@@ -6501,16 +7198,16 @@ char *yyjson_write_opts(yyjson_doc *doc,
 }
 
 bool yyjson_write_file(const char *path,
-                       yyjson_doc *doc,
+                       const yyjson_doc *doc,
                        yyjson_write_flag flg,
-                       yyjson_alc *alc_ptr,
+                       const yyjson_alc *alc_ptr,
                        yyjson_write_err *err) {
     
 #define return_err(_code, _msg) do { \
     err->msg = _msg; \
     err->code = YYJSON_WRITE_ERROR_##_code; \
     return false; \
-} while(false)
+} while (false)
     
     yyjson_write_err dummy_err;
     u8 *dat;
@@ -6574,7 +7271,7 @@ static_inline u8 *yyjson_mut_write_single(yyjson_mut_val *val,
 
 /** Write JSON document minify.
     The root of this document should be a non-empty container. */
-static_inline u8 *yyjson_mut_write_minify(yyjson_mut_doc *doc,
+static_inline u8 *yyjson_mut_write_minify(const yyjson_mut_doc *doc,
                                           yyjson_write_flag flg,
                                           yyjson_alc alc,
                                           usize *dat_len,
@@ -6586,10 +7283,10 @@ static_inline u8 *yyjson_mut_write_minify(yyjson_mut_doc *doc,
     err->msg = _msg; \
     if (hdr) alc.free(alc.ctx, hdr); \
     return NULL; \
-} while(false)
+} while (false)
     
 #define incr_len(_len) do { \
-    ext_len = _len; \
+    ext_len = (usize)(_len); \
     if (unlikely((u8 *)(cur + ext_len) >= (u8 *)ctx)) { \
         alc_inc = yyjson_max(alc_len / 2, ext_len); \
         alc_inc = size_align_up(alc_inc, sizeof(yyjson_mut_write_ctx)); \
@@ -6597,20 +7294,20 @@ static_inline u8 *yyjson_mut_write_minify(yyjson_mut_doc *doc,
         alc_len += alc_inc; \
         tmp = (u8 *)alc.realloc(alc.ctx, hdr, alc_len); \
         if (unlikely(!tmp)) goto fail_alloc; \
-        ctx_len = end - (u8 *)ctx; \
-        ctx_tmp = (yyjson_mut_write_ctx *)(tmp + (alc_len - ctx_len)); \
+        ctx_len = (usize)(end - (u8 *)ctx); \
+        ctx_tmp = (yyjson_mut_write_ctx *)(void *)(tmp + (alc_len - ctx_len)); \
         memmove((void *)ctx_tmp, (void *)(tmp + ((u8 *)ctx - hdr)), ctx_len); \
         ctx = ctx_tmp; \
         cur = tmp + (cur - hdr); \
         end = tmp + alc_len; \
         hdr = tmp; \
     } \
-} while(false)
+} while (false)
     
 #define check_str_len(_len) do { \
     if ((USIZE_MAX < U64_MAX) && (_len >= (USIZE_MAX - 16) / 6)) \
         goto fail_alloc; \
-} while(false)
+} while (false)
     
     yyjson_mut_val *val, *ctn;
     yyjson_type val_type;
@@ -6620,7 +7317,6 @@ static_inline u8 *yyjson_mut_write_minify(yyjson_mut_doc *doc,
     yyjson_mut_write_ctx *ctx, *ctx_tmp;
     usize alc_len, alc_inc, ctx_len, ext_len, str_len;
     const u8 *str_ptr;
-    bool allow_nan_and_inf = (flg & YYJSON_WRITE_ALLOW_INF_AND_NAN) > 0;
     const char_esc_type *esc_table = get_esc_table_with_flag(flg);
     
     alc_len = 0 * YYJSON_WRITER_ESTIMATED_MINIFY_RATIO + 64;
@@ -6629,7 +7325,7 @@ static_inline u8 *yyjson_mut_write_minify(yyjson_mut_doc *doc,
     if (!hdr) goto fail_alloc;
     cur = hdr;
     end = hdr + alc_len;
-    ctx = (yyjson_mut_write_ctx *)end;
+    ctx = (yyjson_mut_write_ctx *)(void *)end;
     
 doc_begin:
     val = doc->root;
@@ -6656,7 +7352,7 @@ val_begin:
             
         case YYJSON_TYPE_NUM:
             incr_len(32);
-            cur = write_number(cur, (yyjson_val *)val, allow_nan_and_inf);
+            cur = write_number(cur, (yyjson_val *)val, flg);
             if (unlikely(!cur)) goto fail_num;
             *cur++ = ',';
             break;
@@ -6721,7 +7417,7 @@ ctn_end:
     
 doc_end:
     *--cur = '\0';
-    *dat_len = cur - hdr;
+    *dat_len = (usize)(cur - hdr);
     err->code = YYJSON_WRITE_SUCCESS;
     err->msg = "success";
     return hdr;
@@ -6740,7 +7436,7 @@ fail_num:
 
 /** Write JSON document pretty.
     The root of this document should be a non-empty container. */
-static_inline u8 *yyjson_mut_write_pretty(yyjson_mut_doc *doc,
+static_inline u8 *yyjson_mut_write_pretty(const yyjson_mut_doc *doc,
                                           yyjson_write_flag flg,
                                           yyjson_alc alc,
                                           usize *dat_len,
@@ -6752,10 +7448,10 @@ static_inline u8 *yyjson_mut_write_pretty(yyjson_mut_doc *doc,
     err->msg = _msg; \
     if (hdr) alc.free(alc.ctx, hdr); \
     return NULL; \
-} while(false)
+} while (false)
     
 #define incr_len(_len) do { \
-    ext_len = _len; \
+    ext_len = (usize)(_len); \
     if (unlikely((u8 *)(cur + ext_len) >= (u8 *)ctx)) { \
         alc_inc = yyjson_max(alc_len / 2, ext_len); \
         alc_inc = size_align_up(alc_inc, sizeof(yyjson_mut_write_ctx)); \
@@ -6763,20 +7459,20 @@ static_inline u8 *yyjson_mut_write_pretty(yyjson_mut_doc *doc,
         alc_len += alc_inc; \
         tmp = (u8 *)alc.realloc(alc.ctx, hdr, alc_len); \
         if (unlikely(!tmp)) goto fail_alloc; \
-        ctx_len = end - (u8 *)ctx; \
-        ctx_tmp = (yyjson_mut_write_ctx *)(tmp + (alc_len - ctx_len)); \
+        ctx_len = (usize)(end - (u8 *)ctx); \
+        ctx_tmp = (yyjson_mut_write_ctx *)(void *)(tmp + (alc_len - ctx_len)); \
         memmove((void *)ctx_tmp, (void *)(tmp + ((u8 *)ctx - hdr)), ctx_len); \
         ctx = ctx_tmp; \
         cur = tmp + (cur - hdr); \
         end = tmp + alc_len; \
         hdr = tmp; \
     } \
-} while(false)
+} while (false)
     
 #define check_str_len(_len) do { \
     if ((USIZE_MAX < U64_MAX) && (_len >= (USIZE_MAX - 16) / 6)) \
         goto fail_alloc; \
-} while(false)
+} while (false)
     
     yyjson_mut_val *val, *ctn;
     yyjson_type val_type;
@@ -6786,7 +7482,6 @@ static_inline u8 *yyjson_mut_write_pretty(yyjson_mut_doc *doc,
     yyjson_mut_write_ctx *ctx, *ctx_tmp;
     usize alc_len, alc_inc, ctx_len, ext_len, str_len, level;
     const u8 *str_ptr;
-    bool allow_nan_and_inf = (flg & YYJSON_WRITE_ALLOW_INF_AND_NAN) > 0;
     const char_esc_type *esc_table = get_esc_table_with_flag(flg);
     
     alc_len = 0 * YYJSON_WRITER_ESTIMATED_PRETTY_RATIO + 64;
@@ -6795,7 +7490,7 @@ static_inline u8 *yyjson_mut_write_pretty(yyjson_mut_doc *doc,
     if (!hdr) goto fail_alloc;
     cur = hdr;
     end = hdr + alc_len;
-    ctx = (yyjson_mut_write_ctx *)end;
+    ctx = (yyjson_mut_write_ctx *)(void *)end;
     
 doc_begin:
     val = doc->root;
@@ -6829,7 +7524,7 @@ val_begin:
             no_indent = ((u8)ctn_obj & (u8)ctn_len);
             incr_len(32 + (no_indent ? 0 : level * 4));
             cur = write_indent(cur, no_indent ? 0 : level);
-            cur = write_number(cur, (yyjson_val *)val, allow_nan_and_inf);
+            cur = write_number(cur, (yyjson_val *)val, flg);
             if (unlikely(!cur)) goto fail_num;
             *cur++ = ',';
             *cur++ = '\n';
@@ -6910,7 +7605,7 @@ ctn_end:
     
 doc_end:
     *cur = '\0';
-    *dat_len = cur - hdr;
+    *dat_len = (usize)(cur - hdr);
     err->code = YYJSON_WRITE_SUCCESS;
     err->msg = "success";
     return hdr;
@@ -6927,11 +7622,16 @@ fail_num:
 #undef check_str_len
 }
 
-char *yyjson_mut_write_opts(yyjson_mut_doc *doc,
+char *yyjson_mut_write_opts(const yyjson_mut_doc *doc,
                             yyjson_write_flag flg,
-                            yyjson_alc *alc_ptr,
+                            const yyjson_alc *alc_ptr,
                             usize *dat_len,
                             yyjson_write_err *err) {
+#define return_err(_code, _msg) do { \
+    err->msg = _msg; \
+    err->code = YYJSON_WRITE_ERROR_##_code; \
+    return NULL; \
+} while (false)
     
     yyjson_write_err dummy_err;
     usize dummy_dat_len;
@@ -6944,16 +7644,12 @@ char *yyjson_mut_write_opts(yyjson_mut_doc *doc,
     
     if (unlikely(!doc)) {
         *dat_len = 0;
-        err->msg = "input JSON document is NULL";
-        err->code = YYJSON_READ_ERROR_INVALID_PARAMETER;
-        return NULL;
+        return_err(INVALID_PARAMETER, "input JSON document is NULL");
     }
     root = doc->root;
     if (!root) {
         *dat_len = 0;
-        err->msg = "input JSON document has no root value";
-        err->code = YYJSON_READ_ERROR_INVALID_PARAMETER;
-        return NULL;
+        return_err(INVALID_PARAMETER, "input JSON document has no root value");
     }
     
     if (!unsafe_yyjson_is_ctn(root) || unsafe_yyjson_get_len(root) == 0) {
@@ -6964,19 +7660,20 @@ char *yyjson_mut_write_opts(yyjson_mut_doc *doc,
     } else {
         return (char *)yyjson_mut_write_minify(doc, flg, alc, dat_len, err);
     }
+#undef return_err
 }
 
 bool yyjson_mut_write_file(const char *path,
-                           yyjson_mut_doc *doc,
+                           const yyjson_mut_doc *doc,
                            yyjson_write_flag flg,
-                           yyjson_alc *alc_ptr,
+                           const yyjson_alc *alc_ptr,
                            yyjson_write_err *err) {
     
 #define return_err(_code, _msg) do { \
     err->msg = _msg; \
     err->code = YYJSON_WRITE_ERROR_##_code; \
     return false; \
-} while(false)
+} while (false)
     
     yyjson_write_err dummy_err;
     u8 *dat;
@@ -7013,7 +7710,9 @@ bool yyjson_mut_write_file(const char *path,
 #if defined(__clang__)
 #   pragma clang diagnostic pop
 #elif defined(__GNUC__)
+#   if (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
 #   pragma GCC diagnostic pop
+#   endif
 #elif defined(_MSC_VER)
 #   pragma warning(pop)
 #endif /* warning suppress end */
