@@ -286,12 +286,14 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
         "escape_unicode",
         "escape_slashes",
         "allow_infinity",
+        "inf_and_nan_as_null",
         NULL
     };
     bool f_pretty_print = false;
     bool f_escape_unicode = false;
     bool f_escape_slashes = false;
     bool f_allow_infinity = false;
+    bool f_inf_and_nan_as_null = false;
     yyjson_write_flag w_flag = 0;
 
     if(!PyArg_ParseTupleAndKeywords(
@@ -302,7 +304,8 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
             &f_pretty_print,
             &f_escape_unicode,
             &f_escape_slashes,
-            &f_allow_infinity
+            &f_allow_infinity,
+            &f_inf_and_nan_as_null
         )) {
         return NULL;
     }
@@ -311,6 +314,7 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     if (f_escape_unicode) w_flag |= YYJSON_WRITE_ESCAPE_UNICODE;
     if (f_escape_slashes) w_flag |= YYJSON_WRITE_ESCAPE_SLASHES;
     if (f_allow_infinity) w_flag |= YYJSON_WRITE_ALLOW_INF_AND_NAN;
+    if (f_inf_and_nan_as_null) w_flag |= YYJSON_WRITE_INF_AND_NAN_AS_NULL;
 
     char *result = NULL;
     size_t w_len;

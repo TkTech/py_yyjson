@@ -29,10 +29,14 @@ def test_document_types():
 
 
 def test_new_document():
+    """Simply ensure we can create a mutable document."""
     Document()
 
 
 def test_document_dumps():
+    """
+    Ensure we can properly dump JSON to a string.
+    """
     doc = Document('{"hello": "world"}')
 
     # Minified by default.
@@ -45,6 +49,9 @@ def test_document_dumps():
 
 
 def test_document_get_pointer():
+    """
+    Ensure JSON pointers work.
+    """
     doc = Document('''{
         "size" : 3,
         "users" : [
@@ -66,6 +73,9 @@ def test_document_get_pointer():
 
 
 def test_document_is_mutable():
+    """
+    Ensure we're correctly exposing the internal mutable state of a Document.
+    """
     doc = Document('''{"hello": "world"}''')
     assert doc.is_mutable is False
     doc = Document()
