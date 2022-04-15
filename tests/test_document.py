@@ -30,11 +30,6 @@ def test_document_types():
         assert doc.as_obj == dst
 
 
-def test_new_document():
-    """Simply ensure we can create a mutable document."""
-    Document()
-
-
 def test_document_dumps():
     """
     Ensure we can properly dump JSON to a string.
@@ -48,6 +43,7 @@ def test_document_dumps():
         '    "hello": "world"\n'
         '}'
     )
+
 
 def test_document_dumps_nan_and_inf():
     """
@@ -93,11 +89,16 @@ def test_document_get_pointer():
         doc.get_pointer('bob')
 
 
-def test_document_is_mutable():
+def test_document_length():
     """
-    Ensure we're correctly exposing the internal mutable state of a Document.
+    Ensure we can get the length of mapping types.
     """
     doc = Document('''{"hello": "world"}''')
-    assert doc.is_mutable is False
-    doc = Document()
-    assert doc.is_mutable is True
+    assert len(doc) == 1
+
+    doc = Document('''[0, 1, 2]''')
+    assert len(doc) == 3
+
+    with pytest.raises(TypeError):
+        doc = Document('1')
+        len(doc)

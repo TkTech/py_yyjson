@@ -8,3 +8,4 @@ _build/
 *.egg-info
 *.so
 dist/
+.idea

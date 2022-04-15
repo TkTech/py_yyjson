@@ -25,11 +25,6 @@ py_free(void *ctx, void *ptr)
     PyMem_Free(ptr);
 }
 
-/**
- * A wrapper around PyMem_* to use is as a yyjson allocator.
- *
- * Use this as the argument to any method that takes an `alc` parameter.
- */
 static yyjson_alc PyMem_Allocator = {
     py_malloc,
     py_realloc,
@@ -37,9 +32,8 @@ static yyjson_alc PyMem_Allocator = {
     NULL
 };
 
-
 /**
- * Recursively convert the given value into an equivelent high-level Python
+ * Recursively convert the given value into an equivalent high-level Python
  * object.
  *
  * :param val: A pointer to the value to be converted.
@@ -87,7 +81,7 @@ element_to_primitive(yyjson_val *val)
             yyjson_val *obj_val;
             PyObject *py_val;
 
-            yyjson_arr_iter iter;
+            yyjson_arr_iter iter = {0};
             yyjson_arr_iter_init(val, &iter);
 
             size_t idx = 0;
@@ -112,7 +106,7 @@ element_to_primitive(yyjson_val *val)
             yyjson_val *obj_key, *obj_val;
             PyObject *py_key, *py_val;
 
-            yyjson_obj_iter iter;
+            yyjson_obj_iter iter = {0};
             yyjson_obj_iter_init(val, &iter);
 
             while ((obj_key = yyjson_obj_iter_next(&iter))) {
@@ -148,31 +142,25 @@ element_to_primitive(yyjson_val *val)
 
 
 /**
- * Represents a yyjson document.
- *
- * When an immutable document is modified, it is transparently copied into
- * a mutable document and the immutable copy is destroyed.
+ * Represents an immutable yyjson document.
  */
 typedef struct {
     PyObject_HEAD
     /** An immutable parsed document. */
     yyjson_doc *i_doc;
-    /** A mutable document, either copied from i_doc on modification, or
-     * created from scratch.
-     **/
-    yyjson_mut_doc *m_doc;
-    /** Is this document mutable? */
-    bool is_mutable;
     /** The memory allocator in use for this document. */
     yyjson_alc *alc;
 } DocumentObject;
+
+typedef struct {
+    PyObject_HEAD
+    DocumentObject *doc;
+} MappingObject;
 
 static void
 Document_dealloc(DocumentObject *self)
 {
     if (self->i_doc != NULL) yyjson_doc_free(self->i_doc);
-    if (self->m_doc != NULL) yyjson_mut_doc_free(self->m_doc);
-
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -184,14 +172,16 @@ Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 
     if (self != NULL) {
         self->i_doc = NULL;
-        self->m_doc = NULL;
-        self->is_mutable = false;
         self->alc = &PyMem_Allocator;
     }
 
     return (PyObject *) self;
 }
 
+PyDoc_STRVAR(
+    Document_init_doc,
+    "A single JSON document.\n"
+);
 static int
 Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
@@ -204,7 +194,7 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
     if(!PyArg_ParseTupleAndKeywords(
             args,
             kwds,
-            "|s#$I",
+            "s#|$I",
             kwlist,
             &content,
             &content_len,
@@ -213,29 +203,18 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
         return -1;
     }
 
-    if (content) {
-        /* We're loading an existing document. */
-        self->i_doc = yyjson_read_opts(
-            content,
-            content_len,
-            r_flag,
-            self->alc,
-            &err
-        );
+    self->i_doc = yyjson_read_opts(
+        content,
+        content_len,
+        r_flag,
+        self->alc,
+        &err
+    );
 
-        if (!self->i_doc) {
-            // TODO: Error conversion!
-            PyErr_SetString(PyExc_ValueError, err.msg);
-            return -1;
-        }
-    } else {
-        /* We're creating a new document from scratch. */
-        self->m_doc = yyjson_mut_doc_new(self->alc);
-        if (!self->m_doc) {
-            PyErr_NoMemory();
-            return -1;
-        }
-        self->is_mutable = true;
+    if (!self->i_doc) {
+        // TODO: Error conversion!
+        PyErr_SetString(PyExc_ValueError, err.msg);
+        return -1;
     }
 
     return 0;
@@ -247,23 +226,8 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
 static PyObject *
 Document_as_obj(DocumentObject *self, void* closure)
 {
-    if (self->i_doc) {
-        yyjson_val *root = yyjson_doc_get_root(self->i_doc);
-        return element_to_primitive(root);
-    } else {
-        PyErr_SetString(PyExc_ValueError, "Document not initialized!");
-        return NULL;
-    }
-}
-
-/**
- * Exposes if the current Document is a mutable copy.
- */
-static PyObject *
-Document_is_mutable(DocumentObject *self, void* closure)
-{
-    if (self->is_mutable) Py_RETURN_TRUE;
-    Py_RETURN_FALSE;
+    yyjson_val *root = yyjson_doc_get_root(self->i_doc);
+    return element_to_primitive(root);
 }
 
 static PyGetSetDef Document_members[] = {
@@ -271,13 +235,6 @@ static PyGetSetDef Document_members[] = {
         (getter)Document_as_obj,
         NULL,
         "The document as a native Python object.",
-        NULL
-    },
-    {"is_mutable",
-        (getter)Document_is_mutable,
-        NULL,
-        "True if this Document is mutable. If you attempt to modify an immutable Document, it will be copied into a"
-        " mutable Document.",
         NULL
     },
     {NULL} /* Sentinel */
@@ -314,26 +271,13 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     yyjson_write_err w_err;
     PyObject *obj_result = NULL;
 
-    if (self->m_doc) {
-        result = yyjson_mut_write_opts(
-            self->m_doc,
-            w_flag,
-            self->alc,
-            &w_len,
-            &w_err
-        );
-    } else if (self->i_doc) {
-        result = yyjson_write_opts(
-            self->i_doc,
-            w_flag,
-            self->alc,
-            &w_len,
-            &w_err
-        );
-    } else {
-        PyErr_SetString(PyExc_ValueError, "Document not initialized!");
-        return NULL;
-    }
+    result = yyjson_write_opts(
+        self->i_doc,
+        w_flag,
+        self->alc,
+        &w_len,
+        &w_err
+    );
 
     if (!result) {
         PyErr_SetString(PyExc_ValueError, w_err.msg);
@@ -368,36 +312,36 @@ Document_get_pointer(DocumentObject *self, PyObject *args)
         return NULL;
     }
 
-    if (self->m_doc) {
-        yyjson_mut_val *result = yyjson_mut_doc_get_pointer(
-            self->m_doc,
-            pointer
-        );
+    yyjson_val *result = yyjson_doc_get_pointer(
+        self->i_doc,
+        pointer
+    );
 
-        if (!result) {
-            PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
-            return NULL;
-        }
-
-        return NULL;
-    } else if (self->i_doc) {
-        yyjson_val *result = yyjson_doc_get_pointer(
-            self->i_doc,
-            pointer
-        );
-
-        if (!result) {
-            PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
-            return NULL;
-        }
-
-        return element_to_primitive(result);
-    } else {
-        PyErr_SetString(PyExc_ValueError, "Document not initialized!");
+    if (!result) {
+        PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
         return NULL;
     }
+
+    return element_to_primitive(result);
 }
 
+static Py_ssize_t
+Document_length(DocumentObject *self)
+{
+    yyjson_val *root = yyjson_doc_get_root(self->i_doc);
+    yyjson_type type = yyjson_get_type(root);
+    if (type == YYJSON_TYPE_OBJ) {
+        return yyjson_obj_size(root);
+    } else if (type == YYJSON_TYPE_ARR) {
+        return yyjson_arr_size(root);
+    }
+
+    PyErr_SetString(
+        PyExc_TypeError,
+        "Can't get the length of element that isn't an object or array."
+    );
+    return -1;
+}
 
 static PyMethodDef Document_methods[] = {
     {"dumps",
@@ -413,11 +357,17 @@ static PyMethodDef Document_methods[] = {
     {NULL} /* Sentinel */
 };
 
+static PyMappingMethods Document_mapping_methods = {
+    (lenfunc)Document_length,
+    NULL,
+    NULL
+};
+
 
 static PyTypeObject DocumentType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "cyyjson.Document",
-    .tp_doc = "A JSON Document.",
+    .tp_doc = Document_init_doc,
     .tp_basicsize = sizeof(DocumentObject),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
@@ -425,6 +375,7 @@ static PyTypeObject DocumentType = {
     .tp_init = (initproc) Document_init,
     .tp_dealloc = (destructor) Document_dealloc,
     .tp_getset = Document_members,
+    .tp_as_mapping = &Document_mapping_methods,
     .tp_methods = Document_methods
 };
 
