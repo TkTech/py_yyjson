@@ -1,14 +1,13 @@
 __all__ = [
-    'load',
-    'loads',
     'Document',
+    'MutableDocument',
     'ReaderFlags',
     'WriterFlags'
 ]
 
 import enum
 
-from cyyjson import Document
+from cyyjson import Document, MutableDocument
 
 
 class ReaderFlags(enum.IntFlag):

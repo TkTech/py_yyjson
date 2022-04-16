@@ -48,6 +48,9 @@ setup(
             'cyyjson',
             [
                 'yyjson/binding.c',
+                'yyjson/memory.c',
+                'yyjson/immutable.c',
+                'yyjson/mutable.c',
                 'yyjson/yyjson.c'
             ],
             language='c'

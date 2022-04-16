@@ -3,14 +3,29 @@
 
 # py_yyjson
 
-Exploratory python bindings for the [yyjson][] project.
-
-This is a work in progress, and while technically it *works*, it needs to be
-fleshed out, documentation needs to be added, tests, CI, etc...
+Python bindings for the excellent [yyjson][] project.
 
 Find the latest documentation at https://py_yyjson.tkte.ch.
 
 [yyjson]: https://github.com/ibireme/yyjson
+
+## 💡 Why should I use this?
+
+Like everything, it has pros and cons versus other Python JSON parsers. Some of
+the pros:
+
+- Good configurable support for **non-standard JSON**, such as comments, NaN,
+  Infinity, and numbers of any size.
+- **Fast**. yyjson has excellent performance, especially compared to Python's
+  built-in JSON library.
+- Support for JSON Merge-Patch.
+ 
+For more technical users, some additional pros:
+
+- Building from source is architecture independant (ex, no dependency on SIMD 
+  instructions) and requires just a C89 compiler.
+- Uses the Python memory allocator, so Python memory profiling tool will work
+  as expected.
 
 ## 🎉 Installation
 
@@ -48,9 +63,9 @@ You can then rebuild the documentation by running `make html` within the
 
 ## 📈 Benchmarks
 
-py_yyjson compares well against most libraries. The [full benchmarks][bench]
-can be found in its sister project, [pysimdjson][].
+py_yyjson compares well against most libraries. The full benchmarks can be
+found in its sister project [json_benchmark][].
 
 
-[bench]: https://github.com/TkTech/pysimdjson#-benchmarks
 [pysimdjson]: https://github.com/TkTech/pysimdjson
+[json_benchmark]: https://github.com/tktech/json_benchmark
