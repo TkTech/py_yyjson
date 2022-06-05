@@ -22,7 +22,7 @@ the pros:
  
 For more technical users, some additional pros:
 
-- Building from source is architecture independant (ex, no dependency on SIMD 
+- Building from source is architecture independent (ex, no dependency on SIMD 
   instructions) and requires just a C89 compiler.
 - Uses the Python memory allocator, so Python memory profiling tool will work
   as expected.

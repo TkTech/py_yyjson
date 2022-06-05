@@ -6,20 +6,17 @@
 #include "yyjson.h"
 
 /**
- * Represents an immutable yyjson document.
+ * Represents a single yyjson document.
  */
 typedef struct {
     PyObject_HEAD
-    /** An immutable parsed document. */
+    /** An immutable document. */
     yyjson_doc *i_doc;
+    /** A mutable document. */
+    yyjson_mut_doc *m_doc;
     /** The memory allocator in use for this document. */
     yyjson_alc *alc;
 } DocumentObject;
-
-typedef struct {
-    PyObject_HEAD
-    DocumentObject *doc;
-} MappingObject;
 
 extern PyTypeObject DocumentType;
 

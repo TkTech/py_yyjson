@@ -1,13 +1,12 @@
 __all__ = [
     'Document',
-    'MutableDocument',
     'ReaderFlags',
     'WriterFlags'
 ]
 
 import enum
 
-from cyyjson import Document, MutableDocument
+from cyyjson import Document
 
 
 class ReaderFlags(enum.IntFlag):
@@ -16,8 +15,8 @@ class ReaderFlags(enum.IntFlag):
     behaviour.
     """
     #: Stop when done instead of issues an error if there's additional content
-    #: after a JSON document. This option may used to parse small pieces of JSON
-    #: in larger data, such as NDJSON.
+    #: after a JSON document. This option may be used to parse small pieces of
+    # JSON in larger data, such as NDJSON.
     STOP_WHEN_DONE = 1 << 1
     #: Allow single trailing comma at the end of an object or array, such as
     #: [1,2,3,] {"a":1,"b":2,}.
@@ -39,11 +38,11 @@ class WriterFlags(enum.IntFlag):
     """
     #: Write the JSON with 4-space indents and newlines.
     PRETTY = 1 << 0
-    #: Escapes unicode as \uXXXXX so taht all output is ASCII.
+    #: Escapes unicode as \uXXXXX so that all output is ASCII.
     ESCAPE_UNICODE = 1 << 1
     #: Escapes / as \/.
     ESCAPE_SLASHES = 1 << 2
     #: Writes Infinity and NaN.
     ALLOW_INF_AND_NAN = 1 << 3
-    #: Writes Infinity and NaN as `null` instead of erroring.
+    #: Writes Infinity and NaN as `null` instead of raising an error.
     INF_AND_NAN_AS_NULL = 1 << 4

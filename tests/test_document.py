@@ -32,7 +32,7 @@ def test_document_types():
 
 def test_document_dumps():
     """
-    Ensure we can properly dump JSON to a string.
+    Ensure we can properly dump an immutable document to a string.
     """
     doc = Document('{"hello": "world"}')
 
@@ -43,6 +43,15 @@ def test_document_dumps():
         '    "hello": "world"\n'
         '}'
     )
+
+    doc = Document('{}')
+    assert doc.dumps() == '{}'
+
+    doc = Document({})
+    assert doc.dumps() == '{}'
+
+    doc = Document([])
+    assert doc.dumps() == '[]'
 
 
 def test_document_dumps_nan_and_inf():
@@ -63,6 +72,11 @@ def test_document_dumps_nan_and_inf():
     obj = doc.as_obj
     assert math.isnan(obj['hello'])
     assert math.isinf(obj['world'])
+    
+    
+def test_document_dumps_raw():
+    doc = Document([9_223_372_036_854_775_807 + 1])
+    print(doc.dumps())
 
 
 def test_document_get_pointer():
@@ -102,3 +116,9 @@ def test_document_length():
     with pytest.raises(TypeError):
         doc = Document('1')
         len(doc)
+
+    doc = Document({})
+    assert len(doc) == 0
+
+    doc = Document([0, 1, 2])
+    assert len(doc) == 3

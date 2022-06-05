@@ -2,8 +2,7 @@
 #include <Python.h>
 #include "yyjson.h"
 #include "memory.h"
-#include "immutable.h"
-#include "mutable.h"
+#include "document.h"
 
 static PyModuleDef yymodule = {
     PyModuleDef_HEAD_INIT,
@@ -20,10 +19,6 @@ PyInit_cyyjson(void)
         return NULL;
     }
 
-    if (PyType_Ready(&MutableDocumentType) < 0) {
-        return NULL;
-    }
-
     m = PyModule_Create(&yymodule);
     if (m == NULL) {
         return NULL;
@@ -32,13 +27,6 @@ PyInit_cyyjson(void)
     Py_INCREF(&DocumentType);
     if (PyModule_AddObject(m, "Document", (PyObject *)&DocumentType) < 0) {
         Py_DECREF(&DocumentType);
-        Py_DECREF(m);
-        return NULL;
-    }
-
-    Py_INCREF(&MutableDocumentType);
-    if (PyModule_AddObject(m, "MutableDocument", (PyObject *)&MutableDocumentType) < 0) {
-        Py_DECREF(&MutableDocumentType);
         Py_DECREF(m);
         return NULL;
     }
