@@ -236,11 +236,18 @@ PyTypeObject *type_for_conversion(PyObject *obj) {
         return &PyDict_Type;
     } else if (obj->ob_type == &PyList_Type) {
         return &PyList_Type;
+    } else if (obj->ob_type == &PyBool_Type) {
+        return &PyBool_Type;
+    } else if (obj->ob_type == Py_None->ob_type) {
+        return Py_None->ob_type;
     }
     return NULL;
 }
 
 
+/**
+ * Recursively convert a Python object into yyjson elements.
+ */
 static inline yyjson_mut_val *
 mut_primitive_to_element(yyjson_mut_doc *doc, PyObject *obj) {
     const PyTypeObject *ob_type = type_for_conversion(obj);
@@ -302,6 +309,12 @@ mut_primitive_to_element(yyjson_mut_doc *doc, PyObject *obj) {
         double dnum = PyFloat_AsDouble(obj);
         if (dnum == -1 && PyErr_Occurred()) return NULL;
         return yyjson_mut_real(doc, dnum);
+    } else if (obj == Py_True) {
+        return yyjson_mut_true(doc);
+    } else if (obj == Py_False) {
+        return yyjson_mut_false(doc);
+    } else if (obj == Py_None) {
+        return yyjson_mut_null(doc);
     } else {
         PyErr_SetString(
             PyExc_TypeError,
@@ -362,11 +375,14 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
     // We were given a string, so just parse it into an immutable document.
     if (PyUnicode_Check(content)) {
         Py_ssize_t content_len;
-        const char *content_as_utf8 = PyUnicode_AsUTF8AndSize(content, &content_len);
+        const char *content_as_utf8 = PyUnicode_AsUTF8AndSize(
+            content,
+            &content_len
+        );
 
         self->i_doc = yyjson_read_opts(
-            // As long as we don't expose the insitu reader flag, it's safe to discard
-            // the const here.
+            // As long as we don't expose the insitu reader flag, it's safe to
+            // discard the const here.
             (char *)content_as_utf8,
             content_len,
             r_flag,
@@ -375,13 +391,17 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
         );
 
         if (!self->i_doc) {
-            // TODO: Error conversion!
+            // TODO: Error conversion! ValueError is not always the right
+            // choice, although JSONDecodeError is a ValueError subclass.
             PyErr_SetString(PyExc_ValueError, err.msg);
             return -1;
         }
     } else {
         self->m_doc = yyjson_mut_doc_new(self->alc);
         yyjson_mut_val *val = mut_primitive_to_element(self->m_doc, content);
+        if (val == NULL) {
+            return -1;
+        }
         yyjson_mut_doc_set_root(self->m_doc, val);
     }
 

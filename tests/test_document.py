@@ -32,7 +32,7 @@ def test_document_types():
 
 def test_document_dumps():
     """
-    Ensure we can properly dump an immutable document to a string.
+    Ensure we can properly dump a document to a string.
     """
     doc = Document('{"hello": "world"}')
 
@@ -126,6 +126,39 @@ def test_document_float_type():
     assert doc.dumps() == '1.25'
     assert doc.as_obj == 1.25
 
+
+def test_document_boolean_type():
+    """
+    Ensure we can load and dump boolean types.
+    """
+    doc = Document('true')
+    assert doc.dumps() == 'true'
+    assert doc.as_obj == True
+
+    doc = Document('false')
+    assert doc.dumps() == 'false'
+    assert doc.as_obj == False
+
+    doc = Document([True])
+    assert doc.dumps() == '[true]'
+    assert doc.as_obj == [True]
+
+    doc = Document([False])
+    assert doc.dumps() == '[false]'
+    assert doc.as_obj == [False]
+
+
+def test_document_none_type():
+    """
+    Ensure we can load and dump the None type.
+    """
+    doc = Document('null')
+    assert doc.dumps() == 'null'
+    assert doc.as_obj == None
+
+    doc = Document([None])
+    assert doc.dumps() == '[null]'
+    assert doc.as_obj == [None]
 
 def test_document_get_pointer():
     """
