@@ -242,9 +242,12 @@ mut_primitive_to_element(yyjson_mut_doc *doc, PyObject *obj) {
     if (ob_type == &PyUnicode_Type) {
         Py_ssize_t str_len;
         const char *str = PyUnicode_AsUTF8AndSize(obj, &str_len);
-
         return yyjson_mut_strncpy(doc, str, str_len);
     } else if (ob_type == &PyLong_Type) {
+        // Serialization of integers is a little special, since Python allows
+        // integers of (effectively) any size. While > 53bit is technically
+        // against the spec, at least 64bit is widely supported and the builtin
+        // Python JSON module supports integers of any size.
         int overflow = 0;
         const int64_t num = PyLong_AsLongLongAndOverflow(obj, &overflow);
         if (!overflow) {
@@ -255,19 +258,24 @@ mut_primitive_to_element(yyjson_mut_doc *doc, PyObject *obj) {
             const uint64_t unum = PyLong_AsUnsignedLongLong(obj);
             if (unum == (uint64_t)-1 && PyErr_Occurred()) {
                 // Number might have been too large even for a unit64_t, resort
-                // to a raw type.
+                // to a raw type by converting the number to its string
+                // representation.
+                PyErr_Clear(); // Erase the OverflowError
                 PyObject *str_repr = PyObject_Str(obj);
                 Py_ssize_t str_len;
                 const char *str = PyUnicode_AsUTF8AndSize(str_repr, &str_len);
                 return yyjson_mut_rawncpy(doc, str, str_len);
             } else {
-                return yyjson_mut_uint(doc, num);
+                return yyjson_mut_uint(doc, unum);
             }
         }
     } else if (ob_type == &PyList_Type) {
         yyjson_mut_val *val = yyjson_mut_arr(doc);
         for (Py_ssize_t i = 0; i < PyList_GET_SIZE(obj); i++) {
-            yyjson_mut_arr_append(val, mut_primitive_to_element(doc, PyList_GET_ITEM(obj, i)));
+            yyjson_mut_arr_append(
+                val,
+                mut_primitive_to_element(doc, PyList_GET_ITEM(obj, i))
+            );
         }
         return val;
     } else if (ob_type == &PyDict_Type) {
@@ -277,6 +285,8 @@ mut_primitive_to_element(yyjson_mut_doc *doc, PyObject *obj) {
         while (PyDict_Next(obj, &i, &key, &value)) {
             yyjson_mut_obj_add(
                 val,
+                // TODO: Keys of valid JSON documents will always be a string,
+                // we should hot-path this.
                 mut_primitive_to_element(doc, key),
                 mut_primitive_to_element(doc, value)
             );

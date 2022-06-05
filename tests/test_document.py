@@ -72,11 +72,37 @@ def test_document_dumps_nan_and_inf():
     obj = doc.as_obj
     assert math.isnan(obj['hello'])
     assert math.isinf(obj['world'])
-    
-    
-def test_document_dumps_raw():
-    doc = Document([9_223_372_036_854_775_807 + 1])
-    print(doc.dumps())
+
+
+def test_document_raw_type():
+    """
+    Ensure we can dump objects that contain integers of any size. This is
+    against the JSON specification, but the same as the built-in JSON module.
+
+    In YYJSON, these values are stored in yyjson_raw, which essentially just
+    points to the value as a string and does not attempt to interpret it as a
+    number.
+    """
+    # The maximum value of a signed 64 bit value.
+    LLONG_MAX = 9_223_372_036_854_775_807
+    # The maximum value of an unsigned 64 bit value.
+    ULLONG_MAX = 18_446_744_073_709_551_615
+
+    # Ensure the maximum yyjson_sint value can be stored.
+    doc = Document([LLONG_MAX])
+    assert doc.dumps() == '[9223372036854775807]'
+
+    # Ensure the maximum yyjson_sint value + 1 can be stored as a yyjson_uint.
+    doc = Document([LLONG_MAX + 1])
+    assert doc.dumps() == '[9223372036854775808]'
+
+    # Ensure the maximum yyjson_uint value can be stored.
+    doc = Document([ULLONG_MAX])
+    assert doc.dumps() == '[18446744073709551615]'
+
+    # Ensure the maximum yyjson_uint value + 1 can be stored as a yyjson_raw.
+    doc = Document([ULLONG_MAX + 1])
+    assert doc.dumps() == '[18446744073709551616]'
 
 
 def test_document_get_pointer():
