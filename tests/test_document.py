@@ -12,12 +12,12 @@ def test_document_from_str():
 
 
 def test_document_types():
-    """Ensure each primitive type can be upcast."""
+    """Ensure each primitive type can be upcast (which does not have its own
+    dedicated test.)"""
     values = (
         ('"hello"', 'hello'),
         ('1', 1),
         ('-1', -1),
-        ('1.03', 1.03),
         ('true', True),
         ('false', False),
         ('null', None),
@@ -103,6 +103,20 @@ def test_document_raw_type():
     # Ensure the maximum yyjson_uint value + 1 can be stored as a yyjson_raw.
     doc = Document([ULLONG_MAX + 1])
     assert doc.dumps() == '[18446744073709551616]'
+    assert doc.as_obj == [ULLONG_MAX + 1]
+
+
+def test_document_float_type():
+    """
+    Ensure we can load and dump floats.
+    """
+    doc = Document([1.25])
+    assert doc.dumps() == '[1.25]'
+    assert doc.as_obj == [1.25]
+
+    doc = Document('1.25')
+    assert doc.dumps() == '1.25'
+    assert doc.as_obj == 1.25
 
 
 def test_document_get_pointer():

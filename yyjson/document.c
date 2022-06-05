@@ -108,6 +108,8 @@ mut_element_to_primitive(yyjson_mut_val *val)
             }
             return dict;
         }
+        case YYJSON_TYPE_RAW:
+            return PyLong_FromString(yyjson_mut_get_raw(val), NULL, 10);
         case YYJSON_TYPE_NONE:
         default:
             PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
@@ -213,6 +215,8 @@ element_to_primitive(yyjson_val *val)
             }
             return dict;
         }
+        case YYJSON_TYPE_RAW:
+            return PyLong_FromString(yyjson_get_raw(val), NULL, 10);
         case YYJSON_TYPE_NONE:
         default:
             PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
@@ -226,6 +230,8 @@ PyTypeObject *type_for_conversion(PyObject *obj) {
         return &PyUnicode_Type;
     } else if (obj->ob_type == &PyLong_Type) {
         return &PyLong_Type;
+    } else if (obj->ob_type == &PyFloat_Type) {
+        return &PyFloat_Type;
     } else if (obj->ob_type == &PyDict_Type) {
         return &PyDict_Type;
     } else if (obj->ob_type == &PyList_Type) {
@@ -292,6 +298,18 @@ mut_primitive_to_element(yyjson_mut_doc *doc, PyObject *obj) {
             );
         }
         return val;
+    } else if (ob_type == &PyFloat_Type) {
+        double dnum = PyFloat_AsDouble(obj);
+        if (dnum == -1 && PyErr_Occurred()) return NULL;
+        return yyjson_mut_real(doc, dnum);
+    } else {
+        PyErr_SetString(
+            PyExc_TypeError,
+            // TODO: We can provide a much better error here. Also add support
+            // for a default hook.
+            "Tried to serialize an object we don't know how to handle."
+        );
+        return NULL;
     }
 }
 
