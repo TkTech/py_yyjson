@@ -105,6 +105,14 @@ def test_document_raw_type():
     assert doc.dumps() == '[18446744073709551616]'
     assert doc.as_obj == [ULLONG_MAX + 1]
 
+    # Ensure we can parse a document with and without the RAW flags set.
+    doc = Document(
+        '[18446744073709551616000000000]',
+        flags=ReaderFlags.NUMBERS_AS_RAW
+    )
+    assert doc.dumps() == '[18446744073709551616000000000]'
+    assert doc.as_obj == [18446744073709551616000000000]
+
 
 def test_document_float_type():
     """
