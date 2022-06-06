@@ -505,25 +505,44 @@ Document_get_pointer(DocumentObject *self, PyObject *args)
         return NULL;
     }
 
-    yyjson_val *result = yyjson_doc_get_pointer(
-        self->i_doc,
-        pointer
-    );
+    if (self->i_doc) {
+        yyjson_val *result = yyjson_doc_get_pointer(
+            self->i_doc,
+            pointer
+        );
 
-    if (!result) {
-        PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
-        return NULL;
+        if (!result) {
+            PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
+            return NULL;
+        }
+
+        return element_to_primitive(result);
+    } else {
+        yyjson_mut_val *result = yyjson_mut_doc_get_pointer(
+            self->m_doc,
+            pointer
+        );
+
+        if (!result) {
+            PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
+            return NULL;
+        }
+
+        return mut_element_to_primitive(result);
     }
-
-    return element_to_primitive(result);
 }
 
 PyDoc_STRVAR(
     Document_merge_patch_doc,
     "Performs an RFC 7386 JSON merge-patch and returns the result as a\n"
-    "new document.\n"
+    "new Document.\n"
     "\n"
     ":param patch: The JSON patch to apply.\n"
+    ":type patch: Document, dict(), or a string containing a JSON document.\n"
+    ":param at_pointer: An optional JSON pointer specifying what part of the\n"
+    "                   document should be patched. If not specified, defaults\n"
+    "                   to the entire Document.\n"
+    ":type at_pointer: str"
 );
 static PyObject *
 Document_merge_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
@@ -555,7 +574,7 @@ Document_merge_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
     if(!PyArg_ParseTupleAndKeywords(
             args,
             kwds,
-            "O|$S#",
+            "O|$s#",
             kwlist,
             &patch,
             &pointer,
@@ -675,7 +694,7 @@ static PyGetSetDef Document_members[] = {
     {"as_obj",
         (getter)Document_as_obj,
         NULL,
-        "The document as a native Python object.",
+        "The Document as a native Python object.",
         NULL
     },
     {NULL} /* Sentinel */

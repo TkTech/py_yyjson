@@ -4,6 +4,11 @@ import pytest
 
 from yyjson import Document, WriterFlags, ReaderFlags
 
+# The maximum value of a signed 64 bit value.
+LLONG_MAX = 9_223_372_036_854_775_807
+# The maximum value of an unsigned 64 bit value.
+ULLONG_MAX = 18_446_744_073_709_551_615
+
 
 def test_document_from_str():
     """Ensure we can parse a document from a str."""
@@ -60,10 +65,10 @@ def test_document_dumps_nan_and_inf():
     """
     # In standards mode, NaN & Inf should be a hard error.
     with pytest.raises(ValueError):
-        doc = Document('{"hello": NaN}')
+        Document('{"hello": NaN}')
 
     with pytest.raises(ValueError):
-        doc = Document('{"hello": Infinity}')
+        Document('{"hello": Infinity}')
 
     doc = Document('''{
         "hello": NaN,
@@ -83,11 +88,6 @@ def test_document_raw_type():
     points to the value as a string and does not attempt to interpret it as a
     number.
     """
-    # The maximum value of a signed 64 bit value.
-    LLONG_MAX = 9_223_372_036_854_775_807
-    # The maximum value of an unsigned 64 bit value.
-    ULLONG_MAX = 18_446_744_073_709_551_615
-
     # Ensure the maximum yyjson_sint value can be stored.
     doc = Document([LLONG_MAX])
     assert doc.dumps() == '[9223372036854775807]'
@@ -133,11 +133,11 @@ def test_document_boolean_type():
     """
     doc = Document('true')
     assert doc.dumps() == 'true'
-    assert doc.as_obj == True
+    assert doc.as_obj is True
 
     doc = Document('false')
     assert doc.dumps() == 'false'
-    assert doc.as_obj == False
+    assert doc.as_obj is False
 
     doc = Document([True])
     assert doc.dumps() == '[true]'
@@ -154,11 +154,12 @@ def test_document_none_type():
     """
     doc = Document('null')
     assert doc.dumps() == 'null'
-    assert doc.as_obj == None
+    assert doc.as_obj is None
 
     doc = Document([None])
     assert doc.dumps() == '[null]'
     assert doc.as_obj == [None]
+
 
 def test_document_get_pointer():
     """
@@ -170,8 +171,27 @@ def test_document_get_pointer():
             {"id": 1, "name": "Harry"},
             {"id": 2, "name": "Ron"},
             {"id": 3, "name": "Hermione"}
-        ]}'''
-    )
+        ]}
+    ''')
+
+    assert doc.get_pointer('/size') == 3
+    assert doc.get_pointer('/users/0') == {
+        'id': 1,
+        'name': 'Harry'
+    }
+    assert doc.get_pointer('/users/1/name') == 'Ron'
+
+    with pytest.raises(ValueError):
+        doc.get_pointer('bob')
+
+    doc = Document({
+        'size': 3,
+        'users': [
+            {'id': 1, 'name': 'Harry'},
+            {'id': 2, 'name': 'Ron'},
+            {'id': 3, 'name': 'Hermione'}
+        ]
+    })
 
     assert doc.get_pointer('/size') == 3
     assert doc.get_pointer('/users/0') == {
