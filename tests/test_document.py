@@ -23,9 +23,6 @@ def test_document_types():
         ('"hello"', 'hello'),
         ('1', 1),
         ('-1', -1),
-        ('true', True),
-        ('false', False),
-        ('null', None),
         ('{"hello": "world"}', {"hello": "world"}),
         ('[0, 1, 2]', [0, 1, 2])
     )

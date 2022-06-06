@@ -373,12 +373,15 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
     }
 
     // We were given a string, so just parse it into an immutable document.
-    if (PyUnicode_Check(content)) {
+    if (PyUnicode_Check(content) || PyBytes_Check(content)) {
         Py_ssize_t content_len;
-        const char *content_as_utf8 = PyUnicode_AsUTF8AndSize(
-            content,
-            &content_len
-        );
+        const char *content_as_utf8 = NULL;
+
+        if (PyUnicode_Check(content)) {
+            content_as_utf8 = PyUnicode_AsUTF8AndSize(content, &content_len);
+        } else {
+            PyBytes_AsStringAndSize(content, (char **)&content_as_utf8, &content_len);
+        }
 
         self->i_doc = yyjson_read_opts(
             // As long as we don't expose the insitu reader flag, it's safe to
