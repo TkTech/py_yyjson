@@ -1,7 +1,7 @@
 #include "memory.h"
 #include "document.h"
 
-#define ensure_mutable(self) \
+#define ENSURE_MUTABLE(self) \
     if (self->i_doc) { \
         self->m_doc = yyjson_doc_mut_copy(self->i_doc, self->alc); \
         yyjson_doc_free(self->i_doc); \
@@ -518,6 +518,104 @@ Document_get_pointer(DocumentObject *self, PyObject *args)
     return element_to_primitive(result);
 }
 
+PyDoc_STRVAR(
+    Document_merge_patch_doc,
+    "Performs an RFC 7386 JSON merge-patch and returns the result as a\n"
+    "new document.\n"
+    "\n"
+    ":param patch: The JSON patch to apply.\n"
+);
+static PyObject *
+Document_merge_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
+{
+    // Create a new, essentially empty Document which will serve as the
+    // container for the patch result.
+    DocumentObject *obj = (DocumentObject*)PyObject_CallFunction(
+        (PyObject*)&DocumentType,
+        "(O)",
+        Py_None
+    );
+    Py_INCREF(Py_None);
+
+    if (!obj) {
+        return NULL;
+    }
+
+    static char *kwlist[] = {
+        "patch",
+        "at_pointer",
+        NULL
+    };
+
+    const char *pointer = NULL;
+    Py_ssize_t pointer_size;
+    yyjson_mut_val *original = NULL;
+    PyObject *patch = NULL;
+
+    if(!PyArg_ParseTupleAndKeywords(
+            args,
+            kwds,
+            "O|$S#",
+            kwlist,
+            &patch,
+            &pointer,
+            &pointer_size
+        )) {
+        return NULL;
+    }
+
+    ENSURE_MUTABLE(self);
+
+    // If a pointer was provided, that's the value we're going to be patching,
+    // otherwise we use the root of the document.
+    if (pointer != NULL) {
+        original = yyjson_mut_doc_get_pointern(
+            self->m_doc,
+            pointer,
+            pointer_size
+        );
+        if (!original) {
+            PyErr_SetString(PyExc_ValueError, "Not a valid JSON Pointer");
+            return NULL;
+        }
+    } else {
+        original = yyjson_mut_doc_get_root(self->m_doc);
+        if (yyjson_unlikely(!original)) {
+            PyErr_SetString(PyExc_ValueError, "Document has no root.");
+            return NULL;
+        }
+    }
+
+    yyjson_mut_val *patch_val = NULL;
+
+    if (PyObject_IsInstance(patch, (PyObject*)&DocumentType)) {
+        // If we were given an existing document, we'll just take the root
+        // and use it as our patch.
+        patch_val = yyjson_mut_doc_get_root(((DocumentObject*)patch)->m_doc);
+    } else {
+        // Otherwise, see if what we were given is a valid JSON document, and
+        // use it if so.
+        DocumentObject *patch_doc = (DocumentObject*)PyObject_CallFunction(
+            (PyObject*)&DocumentType,
+            "(O)",
+            patch
+        );
+        if (!patch_doc) return NULL;
+        ENSURE_MUTABLE(patch_doc);
+        patch_val = yyjson_mut_doc_get_root(patch_doc->m_doc);
+    }
+
+    yyjson_mut_val *merged = yyjson_mut_merge_patch(
+        obj->m_doc,
+        original,
+        patch_val
+    );
+
+    yyjson_mut_doc_set_root(obj->m_doc, merged);
+
+    return (PyObject*)obj;
+}
+
 static Py_ssize_t
 Document_length(DocumentObject *self)
 {
@@ -564,6 +662,11 @@ static PyMethodDef Document_methods[] = {
         (PyCFunction)(void(*)(void))Document_get_pointer,
         METH_VARARGS,
         Document_get_pointer_doc
+    },
+    {"merge_patch",
+        (PyCFunction)(void(*)(void))Document_merge_patch,
+        METH_VARARGS | METH_KEYWORDS,
+        Document_merge_patch_doc
     },
     {NULL} /* Sentinel */
 };
