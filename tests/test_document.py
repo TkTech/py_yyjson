@@ -5,9 +5,9 @@ import pytest
 from yyjson import Document, WriterFlags, ReaderFlags
 
 # The maximum value of a signed 64 bit value.
-LLONG_MAX = 9_223_372_036_854_775_807
+LLONG_MAX = 9223372036854775807
 # The maximum value of an unsigned 64 bit value.
-ULLONG_MAX = 18_446_744_073_709_551_615
+ULLONG_MAX = 18446744073709551615
 
 
 def test_document_from_str():

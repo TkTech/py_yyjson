@@ -516,7 +516,7 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     if (self->i_doc != NULL) {
         yyjson_val *val_to_serialize = NULL;
 
-        if (!pointer) {
+        if (pointer) {
             val_to_serialize = yyjson_doc_get_pointern(
                 self->i_doc,
                 pointer,
@@ -536,7 +536,7 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     } else {
         yyjson_mut_val *mut_val_to_serialize = NULL;
 
-        if (!pointer) {
+        if (pointer) {
             mut_val_to_serialize = yyjson_mut_doc_get_pointern(
                 self->m_doc,
                 pointer,
