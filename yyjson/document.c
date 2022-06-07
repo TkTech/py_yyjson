@@ -352,6 +352,32 @@ Document_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 PyDoc_STRVAR(
     Document_init_doc,
     "A single JSON document.\n"
+    "\n"
+    "A `Document` can be built from a JSON-serializable Python object,\n"
+    "a JSON document in a ``str``, or a JSON document encoded to ``bytes``.\n"
+    "Ex:\n"
+    "\n"
+    ".. doctest::\n"
+    "\n"
+    "   >>> Document({'a': 1, 'b': 2})\n"
+    "   >>> Document(b'{\"a\": 1, \"b\": 2}')\n"
+    "   >>> Document('{\"a\": 1, \"b\": 2}')\n"
+    "\n"
+    "By default, the parsing is strict and follows the JSON specifications.\n"
+    "You can change this behaviour by passing in :class:`ReaderFlags`. Ex:\n"
+    "\n"
+    ".. doctest::\n"
+    "\n"
+    "   >>> Document('''{\n"
+    "   ...     // Comments in JSON!?!?\n"
+    "   ...     \"a\": 1\n"
+    "   ... }''', flags=ReaderFlags.ALLOW_COMMENTS)\n"
+    "\n"
+    ":param content: The initial content of the document.\n"
+    ":type content: A JSON ``str`` or ``bytes``, or a Python object that can\n"
+    "               be serialized.\n"
+    ":param flags: Flags that modify the document parsing behaviour.\n"
+    ":type flags: :class:`ReaderFlags`, optional"
 );
 static int
 Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
@@ -430,24 +456,54 @@ PyDoc_STRVAR(
     Document_dumps_doc,
     "Dumps the document to a string and returns it.\n"
     "\n"
+    "By default, serializes to a minified string and strictly follows the\n"
+    "JSON specification. Ex:\n"
+    "\n"
+    ".. doctest::\n"
+    "\n"
+    "   >>> doc = Document({'hello': 'world'})\n"
+    "   >>> print(doc.dumps())\n"
+    "   {\"hello\":\"world\"}\n"
+    "\n"
+    "This behaviour can be controlled by passing :class:`WriterFlags`. Ex:\n"
+    "\n"
+    ".. doctest::\n"
+    "\n"
+    "   >>> doc = Document({'hello': 'world'})\n"
+    "   >>> print(doc.dumps(flags=WriterFlags.PRETTY))\n"
+    "   {\n"
+    "       \"hello\": \"world\"\n"
+    "   }\n"
+    "\n"
     ":param flags: Flags that control JSON writing behaviour.\n"
-    ":type flags: :class:`yyjson.WriterFlags`, optional"
+    ":type flags: :class:`yyjson.WriterFlags`, optional\n"
+    ":param at_pointer: An optional JSON pointer specifying what part of the\n"
+    "                   document should be dumped. If not specified, defaults\n"
+    "                   to the entire Document.\n"
+    ":type at_pointer: str, optional\n"
+    ":returns: The serialized ``Document``.\n"
+    ":rtype: ``str``"
 );
 static PyObject *
 Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {
         "flags",
+        "at_pointer",
         NULL
     };
     yyjson_write_flag w_flag = 0;
+    const char *pointer = NULL;
+    Py_ssize_t pointer_size;
 
     if(!PyArg_ParseTupleAndKeywords(
             args,
             kwds,
-            "|$I",
+            "|$Is#",
             kwlist,
-            &w_flag
+            &w_flag,
+            &pointer,
+            &pointer_size
         )) {
         return NULL;
     }
@@ -458,16 +514,40 @@ Document_dumps(DocumentObject *self, PyObject *args, PyObject *kwds)
     PyObject *obj_result = NULL;
 
     if (self->i_doc != NULL) {
-        result = yyjson_write_opts(
-            self->i_doc,
+        yyjson_val *val_to_serialize = NULL;
+
+        if (!pointer) {
+            val_to_serialize = yyjson_doc_get_pointern(
+                self->i_doc,
+                pointer,
+                pointer_size
+            );
+        } else {
+            val_to_serialize = yyjson_doc_get_root(self->i_doc);
+        }
+
+        result = yyjson_val_write_opts(
+            val_to_serialize,
             w_flag,
             self->alc,
             &w_len,
             &w_err
         );
     } else {
-        result = yyjson_mut_write_opts(
-            self->m_doc,
+        yyjson_mut_val *mut_val_to_serialize = NULL;
+
+        if (!pointer) {
+            mut_val_to_serialize = yyjson_mut_doc_get_pointern(
+                self->m_doc,
+                pointer,
+                pointer_size
+            );
+        } else {
+            mut_val_to_serialize = yyjson_mut_doc_get_root(self->m_doc);
+        }
+
+        result = yyjson_mut_val_write_opts(
+            mut_val_to_serialize,
             w_flag,
             self->alc,
             &w_len,
@@ -545,7 +625,7 @@ PyDoc_STRVAR(
     ":param at_pointer: An optional JSON pointer specifying what part of the\n"
     "                   document should be patched. If not specified, defaults\n"
     "                   to the entire Document.\n"
-    ":type at_pointer: str"
+    ":type at_pointer: str, optional"
 );
 static PyObject *
 Document_merge_patch(DocumentObject *self, PyObject *args, PyObject *kwds)

@@ -5,6 +5,8 @@
 
 Python bindings for the excellent [yyjson][] project.
 
+## Documentation
+
 Find the latest documentation at https://py_yyjson.tkte.ch.
 
 [yyjson]: https://github.com/ibireme/yyjson
