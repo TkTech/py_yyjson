@@ -461,19 +461,28 @@ PyDoc_STRVAR(
     "\n"
     ".. doctest::\n"
     "\n"
-    "   >>> doc = Document({'hello': 'world'})\n"
-    "   >>> print(doc.dumps())\n"
-    "   {\"hello\":\"world\"}\n"
+    "    >>> doc = Document({'hello': 'world'})\n"
+    "    >>> print(doc.dumps())\n"
+    "    {\"hello\":\"world\"}\n"
     "\n"
     "This behaviour can be controlled by passing :class:`WriterFlags`. Ex:\n"
     "\n"
     ".. doctest::\n"
     "\n"
-    "   >>> doc = Document({'hello': 'world'})\n"
-    "   >>> print(doc.dumps(flags=WriterFlags.PRETTY))\n"
-    "   {\n"
-    "       \"hello\": \"world\"\n"
-    "   }\n"
+    "    >>> doc = Document({'hello': 'world'})\n"
+    "    >>> print(doc.dumps(flags=WriterFlags.PRETTY))\n"
+    "    {\n"
+    "        \"hello\": \"world\"\n"
+    "    }\n"
+    "\n"
+    "To dump just part of a document, you can pass a JSON pointer (RFC 6901)\n"
+    "as ``at_pointer``, ex:\n"
+    "\n"
+    ".. doctest::\n"
+    "\n"
+    "    >>> doc = Document({'results': {'count': 3, 'rows': [55, 66, 77]}})\n"
+    "    >>> print(doc.dumps(at_pointer='/results/rows'))\n"
+    "    [55,66,77]\n"
     "\n"
     ":param flags: Flags that control JSON writing behaviour.\n"
     ":type flags: :class:`yyjson.WriterFlags`, optional\n"
@@ -620,6 +629,17 @@ PyDoc_STRVAR(
     "Performs an RFC 7386 JSON merge-patch and returns the result as a\n"
     "new Document.\n"
     "\n"
+    "If you intend to re-use the same patch many times, you should pre-create\n"
+    "a :class:`Document` containing the patch, ex:\n"
+    "\n"
+    ".. doctest::\n"
+    "\n"
+    "    >>> patch = Document({'planets': {'pluto': False}})\n"
+    "    >>> doc = Document({'planets': {'mars': True, 'pluto': True}})\n"
+    "    >>> new_doc = doc.merge_patch(patch)\n"
+    "    >>> print(new_doc.dumps())\n"
+    "    {\"planets\":{\"mars\":true,\"pluto\":false}}\n"
+    "\n"
     ":param patch: The JSON patch to apply.\n"
     ":type patch: Document, dict(), or a string containing a JSON document.\n"
     ":param at_pointer: An optional JSON pointer specifying what part of the\n"
@@ -760,7 +780,7 @@ static PyMethodDef Document_methods[] = {
         METH_VARARGS | METH_KEYWORDS,
         Document_dumps_doc
     },
-    {"get_pointer",
+    {"at_pointer",
         (PyCFunction)(void(*)(void))Document_get_pointer,
         METH_VARARGS,
         Document_get_pointer_doc
@@ -777,7 +797,7 @@ static PyGetSetDef Document_members[] = {
     {"as_obj",
         (getter)Document_as_obj,
         NULL,
-        "The Document as a native Python object.",
+        "Converts the Document to a native Python object.",
         NULL
     },
     {NULL} /* Sentinel */

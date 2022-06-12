@@ -55,6 +55,13 @@ def test_document_dumps():
     doc = Document([])
     assert doc.dumps() == '[]'
 
+    doc = Document({
+        'hello': {
+            'there': [0, 1, 2]
+        }
+    })
+    assert doc.dumps(at_pointer='/hello/there') == '[0,1,2]'
+
 
 def test_document_dumps_nan_and_inf():
     """
@@ -158,7 +165,7 @@ def test_document_none_type():
     assert doc.as_obj == [None]
 
 
-def test_document_get_pointer():
+def test_document_at_pointer():
     """
     Ensure JSON pointers work.
     """
@@ -171,15 +178,15 @@ def test_document_get_pointer():
         ]}
     ''')
 
-    assert doc.get_pointer('/size') == 3
-    assert doc.get_pointer('/users/0') == {
+    assert doc.at_pointer('/size') == 3
+    assert doc.at_pointer('/users/0') == {
         'id': 1,
         'name': 'Harry'
     }
-    assert doc.get_pointer('/users/1/name') == 'Ron'
+    assert doc.at_pointer('/users/1/name') == 'Ron'
 
     with pytest.raises(ValueError):
-        doc.get_pointer('bob')
+        doc.at_pointer('bob')
 
     doc = Document({
         'size': 3,
@@ -190,15 +197,15 @@ def test_document_get_pointer():
         ]
     })
 
-    assert doc.get_pointer('/size') == 3
-    assert doc.get_pointer('/users/0') == {
+    assert doc.at_pointer('/size') == 3
+    assert doc.at_pointer('/users/0') == {
         'id': 1,
         'name': 'Harry'
     }
-    assert doc.get_pointer('/users/1/name') == 'Ron'
+    assert doc.at_pointer('/users/1/name') == 'Ron'
 
     with pytest.raises(ValueError):
-        doc.get_pointer('bob')
+        doc.at_pointer('bob')
 
 
 def test_document_length():

@@ -17,18 +17,18 @@ class ReaderFlags(enum.IntFlag):
     #: Stop when done instead of issues an error if there's additional content
     #: after a JSON document. This option may be used to parse small pieces of
     # JSON in larger data, such as NDJSON.
-    STOP_WHEN_DONE = 1 << 1
+    STOP_WHEN_DONE = 0x02
     #: Allow single trailing comma at the end of an object or array, such as
     #: [1,2,3,] {"a":1,"b":2,}.
-    ALLOW_TRAILING_COMMAS = 1 << 2
+    ALLOW_TRAILING_COMMAS = 0x04
     #: Allow C-style single line and multiple line comments.
-    ALLOW_COMMENTS = 1 << 3
+    ALLOW_COMMENTS = 0x08
     #: Allow inf/nan number and literal, case-insensitive, such as 1e999, NaN,
     #: inf, -Infinity
-    ALLOW_INF_AND_NAN = 1 << 4
+    ALLOW_INF_AND_NAN = 0x10
     #: Read number as raw string. inf/nan
     #: literal is also read as raw with `ALLOW_INF_AND_NAN` flag.
-    NUMBERS_AS_RAW = 1 << 5
+    NUMBERS_AS_RAW = 0x20
 
 
 class WriterFlags(enum.IntFlag):
@@ -37,12 +37,12 @@ class WriterFlags(enum.IntFlag):
     behaviour.
     """
     #: Write the JSON with 4-space indents and newlines.
-    PRETTY = 1 << 0
+    PRETTY = 0x01
     #: Escapes unicode as \uXXXXX so that all output is ASCII.
-    ESCAPE_UNICODE = 1 << 1
+    ESCAPE_UNICODE = 0x02
     #: Escapes / as \/.
-    ESCAPE_SLASHES = 1 << 2
+    ESCAPE_SLASHES = 0x04
     #: Writes Infinity and NaN.
-    ALLOW_INF_AND_NAN = 1 << 3
+    ALLOW_INF_AND_NAN = 0x08
     #: Writes Infinity and NaN as `null` instead of raising an error.
-    INF_AND_NAN_AS_NULL = 1 << 4
+    INF_AND_NAN_AS_NULL = 0x10
