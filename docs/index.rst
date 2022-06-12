@@ -9,11 +9,16 @@ comments, NaN, Inf, integers of any arbitrary size, and more.
 Binary packages are provided for many versions of Python on many architectures,
 and only requires a C89-compliant compiler when building from source.
 
-[py]yyjson can provide significant speedups by avoiding creating Python objects
-for the entire document, allowing you to extract just the parts of the document
-you actually care about. Unlike most other Python JSON libraries, it provides
-facilities for operating on the document in native code, such as performing
-a JSON Merge-Patch (RFC 7386).
+Why use it?
+-----------
+
+Used as a drop-in replacement for the builtin JSON module, yyjson is several
+times faster. However, most of the time spent loading a JSON document in Python
+isn't the parsing, it's the creation of Python objects. [py]yyjson can provide
+significant speedups by avoiding creating Python objects for the entire
+document, allowing you to extract just the parts of the document you
+actually care about. It also provides facilities for manipulating the
+document in native code, such as performing a JSON Merge-Patch (RFC 7386).
 
 
 .. note::
