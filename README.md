@@ -36,13 +36,17 @@ with no further requirements:
 
     pip install yyjson
 
-Binary wheels are available for the following:
+Pre-built binary wheels are available for:
 
-|                  | py3.5 | py3.6 | py3.7 | py3.8 | py3.9 | pypy3 |
-| ---------------- | ----- | ----- | ----- | ----- | ----- | ----- |
-| OS X (x86_64)    | y     | y     | y     | y     | y     | y     |
-| Windows (x86_64) | y     | y     | y     | y     | y     | y     |
-| Linux (x86_64)   | y     | y     | y     | y     | y     | y     |
+|                  | py3.6 | py3.7 | py3.8 | py3.9 | py3.10 | pypy3 |
+|------------------| ---- | ----- | ----- | ----- |--------| ----- |
+| OS X (x86_64)    | ✅    | ✅     | ✅     | ✅     | ✅      | ✅     |
+| OS X (ARM)       | ❌    | ❌     | ✅     | ✅     | ✅      | ❌     |
+| Windows (x86_64) | ✅    | ✅     | ✅     | ✅     | ✅      | ✅     |
+| Linux (x86_64)   | ✅    | ✅     | ✅     | ✅     | ✅      | ✅     |
+| Linux (aarch64)  | ✅    | ✅     | ✅     | ✅     | ✅      | ✅     |
+| Linux (ppc64le)  | ✅    | ✅     | ✅     | ✅     | ✅      | ✅     |
+| Linux (S390x)    | ✅    | ✅     | ✅     | ✅     | ✅      | ❌     |
 
 If binary wheels are not available for your platform, you'll need any
 C89-compatible compiler.
