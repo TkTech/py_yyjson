@@ -398,8 +398,43 @@ Document_init(DocumentObject *self, PyObject *args, PyObject *kwds)
         return -1;
     }
 
-    // We were given a string, so just parse it into an immutable document.
-    if (PyUnicode_Check(content) || PyBytes_Check(content)) {
+    PyObject *pathlib = PyImport_ImportModule("pathlib");
+    PyObject *path = PyObject_GetAttrString(pathlib, "Path");
+
+    if (PyObject_IsInstance(content, path)) {
+        // We were given a Path object to a location on disk.
+        PyObject *as_str = PyObject_Str(content);
+        if (!as_str) {
+            return -1;
+        }
+
+        Py_ssize_t str_len;
+        const char *str = PyUnicode_AsUTF8AndSize(as_str, &str_len);
+        if (!str) {
+          Py_XDECREF(as_str);
+          return -1;
+        }
+
+        self->i_doc = yyjson_read_file(
+          str,
+          r_flag,
+          self->alc,
+          &err
+        );
+
+        Py_XDECREF(as_str);
+        Py_XDECREF(str);
+
+        if (!self->i_doc) {
+            // TODO: Error conversion! ValueError is not always the right
+            // choice, although JSONDecodeError is a ValueError subclass.
+            PyErr_SetString(PyExc_ValueError, err.msg);
+            return -1;
+        }
+
+        return 0;
+    } else if (PyUnicode_Check(content) || PyBytes_Check(content)) {
+        // We were given a string, so just parse it into an immutable document.
         Py_ssize_t content_len;
         const char *content_as_utf8 = NULL;
 
