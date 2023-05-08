@@ -10,6 +10,15 @@ LLONG_MAX = 9223372036854775807
 ULLONG_MAX = 18446744073709551615
 
 
+def test_document_is_mutable():
+    """Ensure we can determine if a document is mutable."""
+    doc = Document({"hello": "world"})
+    assert doc.is_mutable is True
+
+    doc = Document('{"hello": "world"}')
+    assert doc.is_mutable is False
+
+
 def test_document_from_str():
     """Ensure we can parse a document from a str."""
     doc = Document('{"hello": "world"}')
@@ -165,7 +174,7 @@ def test_document_none_type():
     assert doc.as_obj == [None]
 
 
-def test_document_at_pointer():
+def test_document_get_pointer():
     """
     Ensure JSON pointers work.
     """
@@ -178,15 +187,17 @@ def test_document_at_pointer():
         ]}
     ''')
 
-    assert doc.at_pointer('/size') == 3
-    assert doc.at_pointer('/users/0') == {
+    assert doc.get_pointer('/size') == 3
+    assert doc.get_pointer('/users/0') == {
         'id': 1,
         'name': 'Harry'
     }
-    assert doc.at_pointer('/users/1/name') == 'Ron'
+    assert doc.get_pointer('/users/1/name') == 'Ron'
 
-    with pytest.raises(ValueError):
-        doc.at_pointer('bob')
+    with pytest.raises(ValueError) as exc:
+        doc.get_pointer('bob')
+
+    assert 'no prefix' in str(exc.value)
 
     doc = Document({
         'size': 3,
@@ -197,15 +208,15 @@ def test_document_at_pointer():
         ]
     })
 
-    assert doc.at_pointer('/size') == 3
-    assert doc.at_pointer('/users/0') == {
+    assert doc.get_pointer('/size') == 3
+    assert doc.get_pointer('/users/0') == {
         'id': 1,
         'name': 'Harry'
     }
-    assert doc.at_pointer('/users/1/name') == 'Ron'
+    assert doc.get_pointer('/users/1/name') == 'Ron'
 
     with pytest.raises(ValueError):
-        doc.at_pointer('bob')
+        doc.get_pointer('bob')
 
 
 def test_document_length():
@@ -218,12 +229,24 @@ def test_document_length():
     doc = Document('''[0, 1, 2]''')
     assert len(doc) == 3
 
-    with pytest.raises(TypeError):
-        doc = Document('1')
-        len(doc)
+    doc = Document('1')
+    assert len(doc) == 0
 
     doc = Document({})
     assert len(doc) == 0
 
     doc = Document([0, 1, 2])
     assert len(doc) == 3
+
+
+def test_document_freeze():
+    """
+    Ensure we can freeze mutable documents.
+    """
+    # Documents created from Python objects are always mutable by default,
+    # so use that as our starting point.
+    doc = Document({"hello": "world"})
+    assert doc.is_mutable is True
+
+    doc.freeze()
+    assert doc.is_mutable is False

@@ -15,6 +15,7 @@ PyMODINIT_FUNC
 PyInit_cyyjson(void)
 {
     PyObject *m;
+
     if (PyType_Ready(&DocumentType) < 0) {
         return NULL;
     }

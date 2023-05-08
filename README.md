@@ -3,31 +3,33 @@
 
 # py_yyjson
 
-Python bindings for the excellent [yyjson][] project.
+Fast, flexible Python bindings for the excellent [yyjson][] project.
 
 ## Documentation
 
-Find the latest documentation at https://py_yyjson.tkte.ch.
+Find the latest documentation at https://tkte.ch/py_yyjson.
 
 [yyjson]: https://github.com/ibireme/yyjson
 
 ## 💡 Why should I use this?
 
-Like everything, it has pros and cons versus other Python JSON parsers. Some of
-the pros:
+Like everything, it has pros and cons versus other Python JSON parsers. Some
+pros:
 
 - Good configurable support for **non-standard JSON**, such as comments, NaN,
   Infinity, and numbers of any size.
 - **Fast**. yyjson has excellent performance, especially compared to Python's
   built-in JSON library.
 - Support for JSON Merge-Patch.
+- Read, **modify**, and write JSON documents without ever loading them into
+  Python objects.
  
 For more technical users, some additional pros:
 
 - Building from source is architecture independent (ex, no dependency on SIMD 
   instructions) and requires just a C89 compiler.
-- Uses the Python memory allocator, so Python memory profiling tool will work
-  as expected.
+- Uses the Python memory allocator by default, so the various Python memory
+  profiling tool will work as expected.
 
 ## 🎉 Installation
 

@@ -9,7 +9,7 @@
 void* py_malloc(void *ctx, size_t size);
 
 /** wrapper to use PyMem_Realloc with yyjson's allocator. **/
-void* py_realloc(void *ctx, void *ptr, size_t size);
+void* py_realloc(void *ctx, void *ptr, size_t old_size, size_t size);
 
 /** wrapper to use PyMem_Free with yyjson's allocator. **/
 void py_free(void *ctx, void *ptr);

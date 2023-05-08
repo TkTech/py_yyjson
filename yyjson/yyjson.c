@@ -772,15 +772,6 @@ static_inline void *mem_align_up(void *mem, usize align) {
     return mem;
 }
 
-/** Align address downwards. */
-static_inline void *mem_align_down(void *mem, usize align) {
-    usize size;
-    memcpy(&size, &mem, sizeof(usize));
-    size = size_align_down(size, align);
-    memcpy(&mem, &size, sizeof(usize));
-    return mem;
-}
-
 
 
 /*==============================================================================
@@ -1690,7 +1681,7 @@ static_inline const char *ptr_next_token(const char **ptr, const char *end,
     const char *cur = hdr;
     /* skip unescaped characters */
     while (cur < end && *cur != '/' && *cur != '~') cur++;
-    if (likely(*cur != '~')) {
+    if (likely(cur == end || *cur != '~')) {
         /* no escaped characters, return */
         *ptr = cur;
         *len = (usize)(cur - hdr);
