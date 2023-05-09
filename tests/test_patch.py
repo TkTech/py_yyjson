@@ -6,29 +6,29 @@ import pytest
 from yyjson import Document
 
 
-@pytest.mark.parametrize('context', [{
-    'original': '{"baz": "qux", "foo": "bar"}',
-    'patch': """[
-        {"op": "replace", "path": "/baz", "value": "boo"},
-        {"op": "add", "path": "/hello", "value": ["world"]},
-        {"op": "remove", "path": "/foo"}
-    ]""",
-    'modified': {
-        "baz": "boo",
-        "hello": ["world"]
-    }
-}, {
-    'original': {"baz": "qux", "foo": "bar"},
-    'patch': [
-        {"op": "replace", "path": "/baz", "value": "boo"},
-        {"op": "add", "path": "/hello", "value": ["world"]},
-        {"op": "remove", "path": "/foo"}
+@pytest.mark.parametrize(
+    "context",
+    [
+        {
+            "original": '{"baz": "qux", "foo": "bar"}',
+            "patch": [
+                {"op": "replace", "path": "/baz", "value": "boo"},
+                {"op": "add", "path": "/hello", "value": ["world"]},
+                {"op": "remove", "path": "/foo"},
+            ],
+            "modified": {"baz": "boo", "hello": ["world"]},
+        },
+        {
+            "original": {"baz": "qux", "foo": "bar"},
+            "patch": [
+                {"op": "replace", "path": "/baz", "value": "boo"},
+                {"op": "add", "path": "/hello", "value": ["world"]},
+                {"op": "remove", "path": "/foo"},
+            ],
+            "modified": {"baz": "boo", "hello": ["world"]},
+        },
     ],
-    'modified': {
-        "baz": "boo",
-        "hello": ["world"]
-    }
-}])
+)
 def test_json_patch(context):
     """
     Ensures we can do a simple JSON Patch with various combinations of mutable

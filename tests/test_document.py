@@ -22,18 +22,18 @@ def test_document_is_mutable():
 def test_document_from_str():
     """Ensure we can parse a document from a str."""
     doc = Document('{"hello": "world"}')
-    assert doc.as_obj == {'hello': 'world'}
+    assert doc.as_obj == {"hello": "world"}
 
 
 def test_document_types():
     """Ensure each primitive type can be upcast (which does not have its own
     dedicated test.)"""
     values = (
-        ('"hello"', 'hello'),
-        ('1', 1),
-        ('-1', -1),
+        ('"hello"', "hello"),
+        ("1", 1),
+        ("-1", -1),
         ('{"hello": "world"}', {"hello": "world"}),
-        ('[0, 1, 2]', [0, 1, 2])
+        ("[0, 1, 2]", [0, 1, 2]),
     )
 
     for src, dst in values:
@@ -49,27 +49,19 @@ def test_document_dumps():
 
     # Minified by default.
     assert doc.dumps() == '{"hello":"world"}'
-    assert doc.dumps(flags=WriterFlags.PRETTY) == (
-        '{\n'
-        '    "hello": "world"\n'
-        '}'
-    )
+    assert doc.dumps(flags=WriterFlags.PRETTY) == ("{\n" '    "hello": "world"\n' "}")
 
-    doc = Document('{}')
-    assert doc.dumps() == '{}'
+    doc = Document("{}")
+    assert doc.dumps() == "{}"
 
     doc = Document({})
-    assert doc.dumps() == '{}'
+    assert doc.dumps() == "{}"
 
     doc = Document([])
-    assert doc.dumps() == '[]'
+    assert doc.dumps() == "[]"
 
-    doc = Document({
-        'hello': {
-            'there': [0, 1, 2]
-        }
-    })
-    assert doc.dumps(at_pointer='/hello/there') == '[0,1,2]'
+    doc = Document({"hello": {"there": [0, 1, 2]}})
+    assert doc.dumps(at_pointer="/hello/there") == "[0,1,2]"
 
 
 def test_document_dumps_nan_and_inf():
@@ -83,13 +75,16 @@ def test_document_dumps_nan_and_inf():
     with pytest.raises(ValueError):
         Document('{"hello": Infinity}')
 
-    doc = Document('''{
+    doc = Document(
+        """{
         "hello": NaN,
         "world": Infinity
-    }''', flags=ReaderFlags.ALLOW_INF_AND_NAN)
+    }""",
+        flags=ReaderFlags.ALLOW_INF_AND_NAN,
+    )
     obj = doc.as_obj
-    assert math.isnan(obj['hello'])
-    assert math.isinf(obj['world'])
+    assert math.isnan(obj["hello"])
+    assert math.isinf(obj["world"])
 
 
 def test_document_raw_type():
@@ -103,27 +98,24 @@ def test_document_raw_type():
     """
     # Ensure the maximum yyjson_sint value can be stored.
     doc = Document([LLONG_MAX])
-    assert doc.dumps() == '[9223372036854775807]'
+    assert doc.dumps() == "[9223372036854775807]"
 
     # Ensure the maximum yyjson_sint value + 1 can be stored as a yyjson_uint.
     doc = Document([LLONG_MAX + 1])
-    assert doc.dumps() == '[9223372036854775808]'
+    assert doc.dumps() == "[9223372036854775808]"
 
     # Ensure the maximum yyjson_uint value can be stored.
     doc = Document([ULLONG_MAX])
-    assert doc.dumps() == '[18446744073709551615]'
+    assert doc.dumps() == "[18446744073709551615]"
 
     # Ensure the maximum yyjson_uint value + 1 can be stored as a yyjson_raw.
     doc = Document([ULLONG_MAX + 1])
-    assert doc.dumps() == '[18446744073709551616]'
+    assert doc.dumps() == "[18446744073709551616]"
     assert doc.as_obj == [ULLONG_MAX + 1]
 
     # Ensure we can parse a document with and without the RAW flags set.
-    doc = Document(
-        '[18446744073709551616000000000]',
-        flags=ReaderFlags.NUMBERS_AS_RAW
-    )
-    assert doc.dumps() == '[18446744073709551616000000000]'
+    doc = Document("[18446744073709551616000000000]", flags=ReaderFlags.NUMBERS_AS_RAW)
+    assert doc.dumps() == "[18446744073709551616000000000]"
     assert doc.as_obj == [18446744073709551616000000000]
 
 
@@ -132,11 +124,11 @@ def test_document_float_type():
     Ensure we can load and dump floats.
     """
     doc = Document([1.25])
-    assert doc.dumps() == '[1.25]'
+    assert doc.dumps() == "[1.25]"
     assert doc.as_obj == [1.25]
 
-    doc = Document('1.25')
-    assert doc.dumps() == '1.25'
+    doc = Document("1.25")
+    assert doc.dumps() == "1.25"
     assert doc.as_obj == 1.25
 
 
@@ -144,20 +136,20 @@ def test_document_boolean_type():
     """
     Ensure we can load and dump boolean types.
     """
-    doc = Document('true')
-    assert doc.dumps() == 'true'
+    doc = Document("true")
+    assert doc.dumps() == "true"
     assert doc.as_obj is True
 
-    doc = Document('false')
-    assert doc.dumps() == 'false'
+    doc = Document("false")
+    assert doc.dumps() == "false"
     assert doc.as_obj is False
 
     doc = Document([True])
-    assert doc.dumps() == '[true]'
+    assert doc.dumps() == "[true]"
     assert doc.as_obj == [True]
 
     doc = Document([False])
-    assert doc.dumps() == '[false]'
+    assert doc.dumps() == "[false]"
     assert doc.as_obj == [False]
 
 
@@ -165,12 +157,12 @@ def test_document_none_type():
     """
     Ensure we can load and dump the None type.
     """
-    doc = Document('null')
-    assert doc.dumps() == 'null'
+    doc = Document("null")
+    assert doc.dumps() == "null"
     assert doc.as_obj is None
 
     doc = Document([None])
-    assert doc.dumps() == '[null]'
+    assert doc.dumps() == "[null]"
     assert doc.as_obj == [None]
 
 
@@ -178,58 +170,56 @@ def test_document_get_pointer():
     """
     Ensure JSON pointers work.
     """
-    doc = Document('''{
+    doc = Document(
+        """{
         "size" : 3,
         "users" : [
             {"id": 1, "name": "Harry"},
             {"id": 2, "name": "Ron"},
             {"id": 3, "name": "Hermione"}
         ]}
-    ''')
+    """
+    )
 
-    assert doc.get_pointer('/size') == 3
-    assert doc.get_pointer('/users/0') == {
-        'id': 1,
-        'name': 'Harry'
-    }
-    assert doc.get_pointer('/users/1/name') == 'Ron'
+    assert doc.get_pointer("/size") == 3
+    assert doc.get_pointer("/users/0") == {"id": 1, "name": "Harry"}
+    assert doc.get_pointer("/users/1/name") == "Ron"
 
     with pytest.raises(ValueError) as exc:
-        doc.get_pointer('bob')
+        doc.get_pointer("bob")
 
-    assert 'no prefix' in str(exc.value)
+    assert "no prefix" in str(exc.value)
 
-    doc = Document({
-        'size': 3,
-        'users': [
-            {'id': 1, 'name': 'Harry'},
-            {'id': 2, 'name': 'Ron'},
-            {'id': 3, 'name': 'Hermione'}
-        ]
-    })
+    doc = Document(
+        {
+            "size": 3,
+            "users": [
+                {"id": 1, "name": "Harry"},
+                {"id": 2, "name": "Ron"},
+                {"id": 3, "name": "Hermione"},
+            ],
+        }
+    )
 
-    assert doc.get_pointer('/size') == 3
-    assert doc.get_pointer('/users/0') == {
-        'id': 1,
-        'name': 'Harry'
-    }
-    assert doc.get_pointer('/users/1/name') == 'Ron'
+    assert doc.get_pointer("/size") == 3
+    assert doc.get_pointer("/users/0") == {"id": 1, "name": "Harry"}
+    assert doc.get_pointer("/users/1/name") == "Ron"
 
     with pytest.raises(ValueError):
-        doc.get_pointer('bob')
+        doc.get_pointer("bob")
 
 
 def test_document_length():
     """
     Ensure we can get the length of mapping types.
     """
-    doc = Document('''{"hello": "world"}''')
+    doc = Document("""{"hello": "world"}""")
     assert len(doc) == 1
 
-    doc = Document('''[0, 1, 2]''')
+    doc = Document("""[0, 1, 2]""")
     assert len(doc) == 3
 
-    doc = Document('1')
+    doc = Document("1")
     assert len(doc) == 0
 
     doc = Document({})
