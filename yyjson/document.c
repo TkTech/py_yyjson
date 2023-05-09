@@ -282,10 +282,11 @@ static inline yyjson_mut_val* mut_primitive_to_element(yyjson_mut_doc* doc,
     Py_ssize_t i = 0;
     PyObject *key, *value;
     while (PyDict_Next(obj, &i, &key, &value)) {
+      Py_ssize_t str_len;
+      const char* str = PyUnicode_AsUTF8AndSize(key, &str_len);
+
       yyjson_mut_obj_add(val,
-                         // TODO: Keys of valid JSON documents will always be a
-                         // string, we should hot-path this.
-                         mut_primitive_to_element(doc, key),
+                         yyjson_mut_strncpy(doc, str, str_len),
                          mut_primitive_to_element(doc, value));
     }
     return val;
