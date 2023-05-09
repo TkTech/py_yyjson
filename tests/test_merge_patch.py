@@ -31,6 +31,10 @@ from yyjson import Document
     'modified': {'hello': 'mars', 'goodbye': 'moon'}
 }])
 def test_merge_patch(context):
+    """
+    Test various combinations of mutable and immutable source documents
+    and patch documents.
+    """
     original = Document(context['original'])
     patch = Document(context['patch'])
 
