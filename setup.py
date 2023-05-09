@@ -18,7 +18,7 @@ setup(
     long_description_content_type="text/markdown",
     author="Tyler Kennedy",
     author_email="tk@tkte.ch",
-    url="http://github.com/TkTech/py_yyjson",
+    url="https://github.com/TkTech/py_yyjson",
     keywords=["json", "yyjson"],
     zip_safe=False,
     classifiers=[
