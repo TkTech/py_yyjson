@@ -703,13 +703,13 @@ Document_freeze(DocumentObject *self)
 }
 
 PyDoc_STRVAR(
-    Document_merge_patch_doc,
+    Document_patch_doc,
     "Apply a JSON Merge-Patch to the ``Document``, either at the root\n"
     " of the ``Document`` or optionally at the provided JSON pointer.\n"
     "\n"
 );
 static PyObject *
-Document_merge_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
+Document_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
 {
     // Create a new, essentially empty Document which will serve as the
     // container for the patch result.
@@ -731,21 +731,26 @@ Document_merge_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
     static char *kwlist[] = {
         "patch",
         "at_pointer",
+        "use_merge_patch",
         NULL
     };
 
     const char *pointer = NULL;
     Py_ssize_t pointer_size;
     PyObject *patch = NULL;
+    int use_merge_patch = false;
 
     if(!PyArg_ParseTupleAndKeywords(
             args,
             kwds,
-            "O|$z#",
+            /* We can switch the "i" for "p" to be explicit with our bool
+             * flag, but only after we drop support for everything < 3.3. */
+            "O|$z#i",
             kwlist,
             &patch,
             &pointer,
-            &pointer_size
+            &pointer_size,
+            &use_merge_patch
         )) {
         return NULL;
     }
@@ -797,11 +802,32 @@ Document_merge_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
             return NULL;
         }
 
-        yyjson_mut_val *patched_val = yyjson_merge_patch(
-          obj->m_doc,
-          original,
-          patch_val
-        );
+        yyjson_mut_val *patched_val = NULL;
+
+        if (use_merge_patch) {
+             patched_val = yyjson_merge_patch(
+              obj->m_doc,
+              original,
+              patch_val
+            );
+        } else {
+            yyjson_patch_err patch_err;
+
+            patched_val = yyjson_patch(
+                obj->m_doc,
+                original,
+                patch_val,
+                &patch_err
+            );
+
+            if (!patched_val) {
+                PyErr_SetString(
+                    PyExc_ValueError,
+                    patch_err.msg ? patch_err.msg : "Unable to apply patch to document."
+                );
+                return NULL;
+            }
+        }
 
         if (!patched_val) {
             PyErr_SetString(PyExc_ValueError, "Unable to apply patch to document.");
@@ -844,11 +870,32 @@ Document_merge_patch(DocumentObject *self, PyObject *args, PyObject *kwds)
             return NULL;
         }
 
-        yyjson_mut_val *patched_val = yyjson_mut_merge_patch(
-          obj->m_doc,
-          original,
-          patch_val
-        );
+        yyjson_mut_val *patched_val;
+
+        if (use_merge_patch) {
+            patched_val = yyjson_mut_merge_patch(
+              obj->m_doc,
+              original,
+              patch_val
+            );
+        } else {
+            yyjson_patch_err patch_err;
+
+            patched_val = yyjson_mut_patch(
+                obj->m_doc,
+                original,
+                patch_val,
+                &patch_err
+            );
+
+            if (!patched_val) {
+                PyErr_SetString(
+                    PyExc_ValueError,
+                    patch_err.msg ? patch_err.msg : "Unable to apply patch to document."
+                );
+                return NULL;
+            }
+        }
 
         if (!patched_val) {
             PyErr_SetString(PyExc_ValueError, "Unable to apply patch to document.");
@@ -886,10 +933,10 @@ static PyMethodDef Document_methods[] = {
         METH_NOARGS,
         Document_freeze_doc
     },
-    {"merge_patch",
-        (PyCFunction)(void(*)(void))Document_merge_patch,
+    {"patch",
+        (PyCFunction)(void(*)(void))Document_patch,
         METH_VARARGS | METH_KEYWORDS,
-        Document_merge_patch_doc
+        Document_patch_doc
     },
     {NULL} /* Sentinel */
 };

@@ -1,3 +1,6 @@
+"""
+Tests for JSON Merge-Patch (RFC 7386) support.
+"""
 import pytest
 
 from yyjson import Document
@@ -32,15 +35,16 @@ from yyjson import Document
 }])
 def test_merge_patch(context):
     """
-    Test various combinations of mutable and immutable source documents
-    and patch documents.
+    Ensures we can do a simple JSON Merge-Patch with various combinations of
+    mutable and immutable documents.
     """
     original = Document(context['original'])
     patch = Document(context['patch'])
 
-    modified = original.merge_patch(
+    modified = original.patch(
         patch,
-        at_pointer=context.get('at_pointer')
+        at_pointer=context.get('at_pointer'),
+        use_merge_patch=True
     )
 
     assert modified.as_obj == context["modified"]

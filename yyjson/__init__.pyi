@@ -32,9 +32,11 @@ class Document:
               flags: Optional[WriterFlags] = ...,
               at_pointer: Optional[str] = ...
               ) -> str: ...
-    def merge_patch(self,
+    def patch(self,
                     patch: 'Document',
-                    at_pointer: Optional[str] = None
+                    *,
+                    at_pointer: Optional[str] = None,
+                    use_merge_patch: bool = False
                     ) -> 'Document': ...
     @property
     def is_mutable(self) -> bool: ...
