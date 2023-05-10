@@ -17,9 +17,9 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'yyjson'
-copyright = '2022, Author'
-author = 'Author'
+project = 'py_yyjson'
+copyright = '2022, Tyler Kennedy <tk@tkte.ch>'
+author = 'Tyler Kennedy'
 
 
 # -- General configuration ---------------------------------------------------
@@ -55,7 +55,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'alabaster'
+html_theme = 'furo'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -63,7 +63,6 @@ html_theme = 'alabaster'
 html_static_path = ['_static']
 
 html_theme_options = {
-    'nosidebar': True
 }
 
 

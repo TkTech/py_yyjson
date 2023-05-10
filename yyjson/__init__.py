@@ -16,7 +16,7 @@ class ReaderFlags(enum.IntFlag):
     """
     #: Stop when done instead of issues an error if there's additional content
     #: after a JSON document. This option may be used to parse small pieces of
-    # JSON in larger data, such as NDJSON.
+    #: JSON in larger data, such as NDJSON.
     STOP_WHEN_DONE = 0x02
     #: Allow single trailing comma at the end of an object or array, such as
     #: [1,2,3,] {"a":1,"b":2,}.
@@ -38,6 +38,9 @@ class WriterFlags(enum.IntFlag):
     """
     #: Write the JSON with 4-space indents and newlines.
     PRETTY = 0x01
+    #: Write JSON pretty with 2 space indent. This flag will override
+    #: the PRETTY flag.
+    PRETTY_TWO_SPACES = 0x40
     #: Escapes unicode as \uXXXXX so that all output is ASCII.
     ESCAPE_UNICODE = 0x02
     #: Escapes / as \/.

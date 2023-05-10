@@ -335,7 +335,8 @@ PyDoc_STRVAR(
     "A single JSON document.\n"
     "\n"
     "A `Document` can be built from a JSON-serializable Python object,\n"
-    "a JSON document in a ``str``, or a JSON document encoded to ``bytes``.\n"
+    "a JSON document in a ``str``, a JSON document encoded to ``bytes``,\n"
+    "or a ``Path()`` object to read a file from disk.\n"
     "Ex:\n"
     "\n"
     ".. doctest::\n"
@@ -343,6 +344,7 @@ PyDoc_STRVAR(
     "   >>> Document({'a': 1, 'b': 2})\n"
     "   >>> Document(b'{\"a\": 1, \"b\": 2}')\n"
     "   >>> Document('{\"a\": 1, \"b\": 2}')\n"
+    "   >>> Document(Path('path/to/file.json'))\n"
     "\n"
     "By default, the parsing is strict and follows the JSON specifications.\n"
     "You can change this behaviour by passing in :class:`ReaderFlags`. Ex:\n"
@@ -354,9 +356,14 @@ PyDoc_STRVAR(
     "   ...     \"a\": 1\n"
     "   ... }''', flags=ReaderFlags.ALLOW_COMMENTS)\n"
     "\n"
+    ".. note::\n"
+    "\n"
+    "   yyjson has distinct APIs and data structures for mutable and immutable\n"
+    "   documents. This class is a wrapper around both of them, and will\n"
+    "   automatically convert between them as needed.\n"
+    "\n"
     ":param content: The initial content of the document.\n"
-    ":type content: A JSON ``str`` or ``bytes``, or a Python object that can\n"
-    "               be serialized.\n"
+    ":type content: ``str``, ``bytes``, ``Path``, ``dict``, ``list``\n"
     ":param flags: Flags that modify the document parsing behaviour.\n"
     ":type flags: :class:`ReaderFlags`, optional");
 static int Document_init(DocumentObject* self, PyObject* args, PyObject* kwds) {
@@ -454,7 +461,7 @@ static PyObject* Document_as_obj(DocumentObject* self, void* closure) {
 /**
  * Is the document mutable?
  */
-static PyObject* Document_is_mutable(DocumentObject* self, void* closure) {
+static PyObject* Document_is_thawed(DocumentObject* self, void* closure) {
   return PyBool_FromLong(self->m_doc != NULL);
 }
 
@@ -494,7 +501,7 @@ PyDoc_STRVAR(
     ":type flags: :class:`yyjson.WriterFlags`, optional\n"
     ":param at_pointer: An optional JSON pointer specifying what part of the\n"
     "                   document should be dumped. If not specified, defaults\n"
-    "                   to the entire Document.\n"
+    "                   to the entire ``Document``.\n"
     ":type at_pointer: str, optional\n"
     ":returns: The serialized ``Document``.\n"
     ":rtype: ``str``");
@@ -556,7 +563,7 @@ PyDoc_STRVAR(Document_get_pointer_doc,
              "Returns the JSON element at the given JSON pointer (RFC 6901).\n"
              "\n"
              ":param pointer: JSON Pointer to search for.\n"
-             ":type pointer: str");
+             ":type pointer: ``str``");
 static PyObject* Document_get_pointer(DocumentObject* self, PyObject* args) {
   char* pointer = NULL;
   Py_ssize_t pointer_len;
@@ -594,13 +601,16 @@ static PyObject* Document_get_pointer(DocumentObject* self, PyObject* args) {
 
 PyDoc_STRVAR(
     Document_freeze_doc,
-    "Freezes the document, copying it into an internal read-only object.\n"
+    "Freezes the document, copying it into yyjson's read-only internal object.\n"
     "\n"
     "This object can be used as a normal ``Document`` object, but uses less\n"
-    " memory after creation, and offers slightly improved performance.\n"
+    "memory after creation, and offers slightly improved performance.\n"
     "\n"
-    "If a ``Document`` method that requires mutation is called on a frozen\n"
-    " ``Document``, it will be automatically unfrozen.");
+    ".. note::\n"
+    "\n"
+    "    If a ``Document`` method that requires mutation is called on a frozen\n"
+    "    ``Document``, such as :func:`patch()`, it will be automatically thawed.\n"
+    "    This is an advanced function and can usually be ignored.\n");
 static PyObject* Document_freeze(DocumentObject* self) {
   if (self->m_doc) {
     self->i_doc = yyjson_mut_doc_imut_copy(self->m_doc, self->alc);
@@ -612,9 +622,45 @@ static PyObject* Document_freeze(DocumentObject* self) {
 }
 
 PyDoc_STRVAR(
+    Document_thaw_doc,
+    "Thaws the document, copying it into yyjson's mutable internal object.\n"
+    "\n"
+    "This object can be used as a normal ``Document`` object, but will use\n"
+    "slightly more memory after creation, and offers slightly worse\n"
+    "performance.\n"
+    "\n"
+    ".. note::\n"
+    "\n"
+    "    This is an advanced function and can usually be ignored.\n");
+static PyObject* Document_thaw(DocumentObject* self) {
+  if (self->i_doc) {
+    self->m_doc = yyjson_doc_mut_copy(self->i_doc, self->alc);
+    yyjson_doc_free(self->i_doc);
+    self->i_doc = NULL;
+  }
+
+  Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(
     Document_patch_doc,
-    "Apply a JSON Merge-Patch to the ``Document``, either at the root\n"
-    " of the ``Document`` or optionally at the provided JSON pointer.\n"
+    "Patch a ``Document`` with another ``Document``, using either JSON Patch (RFC 6902)\n"
+    "or JSON Merge-Patch (RFC 7386).\n"
+    "\n"
+    "By default, this will apply a JSON Patch. Specify ``use_merge_patch=True`` to\n"
+    "use JSON Merge-Patch instead.\n"
+    "\n"
+    ".. note::\n"
+    "\n"
+    "    This method will automatically thaw a frozen ``Document``.\n"
+    "\n"
+    ":param patch: The ``Document`` to patch with.\n"
+    ":type patch: ``Document``\n"
+    ":param at_pointer: The (optional) JSON Pointer (RFC 6901) to patch at,\n"
+    "                   instead of patching the entire document.\n"
+    ":type at_pointer: ``str``\n"
+    ":param use_merge_patch: Whether to use JSON Merge-Patch (RFC 7386) instead of\n"
+    "    JSON Patch (RFC 6902).\n"
     "\n");
 static PyObject* Document_patch(DocumentObject* self, PyObject* args,
                                 PyObject* kwds) {
@@ -783,22 +829,24 @@ static Py_ssize_t Document_length(DocumentObject* self) {
 }
 
 static PyMethodDef Document_methods[] = {
+    {"patch", (PyCFunction)(void (*)(void))Document_patch,
+     METH_VARARGS | METH_KEYWORDS, Document_patch_doc},
     {"dumps", (PyCFunction)(void (*)(void))Document_dumps,
      METH_VARARGS | METH_KEYWORDS, Document_dumps_doc},
     {"get_pointer", (PyCFunction)(void (*)(void))Document_get_pointer,
      METH_VARARGS, Document_get_pointer_doc},
     {"freeze", (PyCFunction)(void (*)(void))Document_freeze, METH_NOARGS,
      Document_freeze_doc},
-    {"patch", (PyCFunction)(void (*)(void))Document_patch,
-     METH_VARARGS | METH_KEYWORDS, Document_patch_doc},
+    {"thaw", (PyCFunction)(void (*)(void))Document_thaw, METH_NOARGS,
+     Document_thaw_doc},
     {NULL} /* Sentinel */
 };
 
 static PyGetSetDef Document_members[] = {
     {"as_obj", (getter)Document_as_obj, NULL,
-     "Converts the Document to a native Python object.", NULL},
-    {"is_mutable", (getter)Document_is_mutable, NULL,
-     "Returns whether the Document is mutable.", NULL},
+     "Converts the Document to a native Python object, such as a ``dict`` or ``list``.", NULL},
+    {"is_thawed", (getter)Document_is_thawed, NULL,
+     "Returns whether the Document is thawed/mutable.", NULL},
     {NULL} /* Sentinel */
 };
 

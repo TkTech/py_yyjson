@@ -2,7 +2,7 @@
 ==========
 
 Python bindings to the fantastic `yyjson`_ project. This module provides a fast,
-flexible, portable JSON parser and serializer. yyjson by default has strict
+flexible, and portable JSON parser and serializer. yyjson by default has strict
 compliance to the specification, but also includes options to parse JSON with
 comments, NaN, Inf, integers of any arbitrary size, and more.
 

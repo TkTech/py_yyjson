@@ -13,10 +13,10 @@ ULLONG_MAX = 18446744073709551615
 def test_document_is_mutable():
     """Ensure we can determine if a document is mutable."""
     doc = Document({"hello": "world"})
-    assert doc.is_mutable is True
+    assert doc.is_thawed is True
 
     doc = Document('{"hello": "world"}')
-    assert doc.is_mutable is False
+    assert doc.is_thawed is False
 
 
 def test_document_from_str():
@@ -236,7 +236,7 @@ def test_document_freeze():
     # Documents created from Python objects are always mutable by default,
     # so use that as our starting point.
     doc = Document({"hello": "world"})
-    assert doc.is_mutable is True
+    assert doc.is_thawed is True
 
     doc.freeze()
-    assert doc.is_mutable is False
+    assert doc.is_thawed is False
