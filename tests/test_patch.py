@@ -1,6 +1,8 @@
 """
 Tests for JSON Patch (RFC 6902) support.
 """
+from pathlib import Path
+
 import pytest
 
 from yyjson import Document
@@ -41,3 +43,28 @@ def test_json_patch(context):
     modified = original.patch(patch)
 
     assert modified.as_obj == context["modified"]
+
+
+def test_json_patch_samples():
+    tests = Document(Path(__file__).parent / "tests.json").as_obj
+
+    for test in tests:
+        if test.get("disabled"):
+            continue
+
+        original = Document(test["doc"])
+        patch = Document(test["patch"])
+
+        try:
+            modified = original.patch(patch)
+        except Exception as exc:
+            # We're _supposed_ to raise an error if there's an error key,
+            # but our error messages aren't going to match at all so just
+            # let it go.
+            if test.get("error"):
+                continue
+
+            raise exc
+
+        assert modified.as_obj == test["expected"]
+
