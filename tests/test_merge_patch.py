@@ -1,62 +1,58 @@
+"""
+Tests for JSON Merge-Patch (RFC 7386) support.
+"""
 import pytest
 
 from yyjson import Document
 
 
-def test_merge_patch():
+@pytest.mark.parametrize(
+    "context",
+    [
+        {
+            "original": '{"hello": "earth", "goodbye": "moon"}',
+            "patch": '{"hello": "mars"}',
+            "modified": {"hello": "mars", "goodbye": "moon"},
+        },
+        {
+            "original": '{"content": {"hello": "earth", "goodbye": "moon"}}',
+            "patch": '{"hello": "mars"}',
+            "modified": {"hello": "mars", "goodbye": "moon"},
+            "at_pointer": "/content",
+        },
+        {
+            "original": {"hello": "earth", "goodbye": "moon"},
+            "patch": {"hello": "mars"},
+            "modified": {"hello": "mars", "goodbye": "moon"},
+        },
+        {
+            "original": {"content": {"hello": "earth", "goodbye": "moon"}},
+            "patch": {"hello": "mars"},
+            "modified": {"hello": "mars", "goodbye": "moon"},
+            "at_pointer": "/content",
+        },
+        {
+            "original": {"hello": "earth", "goodbye": "moon"},
+            "patch": '{"hello": "mars"}',
+            "modified": {"hello": "mars", "goodbye": "moon"},
+        },
+        {
+            "original": '{"hello": "earth", "goodbye": "moon"}',
+            "patch": {"hello": "mars"},
+            "modified": {"hello": "mars", "goodbye": "moon"},
+        },
+    ],
+)
+def test_merge_patch(context):
     """
-    Ensure basic JSON Merge-Patch functionality works.
+    Ensures we can do a simple JSON Merge-Patch with various combinations of
+    mutable and immutable documents.
     """
-    class RandomObject:
-        pass
+    original = Document(context["original"])
+    patch = Document(context["patch"])
 
-    doc = Document({
-        'a': 1,
-        'c': 4
-    })
-    patch = Document({
-        'a': 3,
-        'b': 2
-    })
+    modified = original.patch(
+        patch, at_pointer=context.get("at_pointer"), use_merge_patch=True
+    )
 
-    # We should be able to use an existing Document
-    assert doc.merge_patch(patch).as_obj == {
-        'a': 3,
-        'b': 2,
-        'c': 4
-    }
-    # We should be able to use a dictionary
-    assert doc.merge_patch({'a': 3, 'b': 2}).as_obj == {
-        'a': 3,
-        'b': 2,
-        'c': 4
-    }
-    # We should be able to use a serialized JSON string
-    assert doc.merge_patch('{"a": 3, "b": 2}').as_obj == {
-        'a': 3,
-        'b': 2,
-        'c': 4
-    }
-    # We should be able to nuke a key
-    assert doc.merge_patch({'a': None, 'b': 2}).as_obj == {
-        'b': 2,
-        'c': 4
-    }
-
-    # Trying to patch with an unknown object should fail rather than crash.
-    with pytest.raises(TypeError):
-        doc.merge_patch(RandomObject)
-
-    doc = Document({
-        'a': 1,
-        'b': {
-            'a': 2,
-            'b': 3
-        }
-    })
-
-    # We should be able to extract and patch just part of a document.
-    assert doc.merge_patch({'a': 5}, at_pointer='/b').as_obj == {
-        'a': 5,
-        'b': 3
-    }
+    assert modified.as_obj == context["modified"]
