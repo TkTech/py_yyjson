@@ -723,7 +723,7 @@ static PyObject* Document_patch(DocumentObject* self, PyObject* args,
 
     DocumentObject* patch_doc = (DocumentObject*)patch;
 
-    // If the patch is a mutabale document, we need to freeze it before we can
+    // If the patch is a mutable document, we need to freeze it before we can
     // use it with with the immutable merge_patch API.
     if (patch_doc->m_doc) {
       patch_doc->i_doc =
