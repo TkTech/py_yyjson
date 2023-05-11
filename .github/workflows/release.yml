@@ -120,4 +120,4 @@ jobs:
 
       - name: Publishing documentation
         run: |
-          ghp-import -f -n -c py_yyjson.tkte.ch -p docs/_build/html
+          ghp-import -f -n -p docs/_build/html
