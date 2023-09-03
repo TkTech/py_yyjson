@@ -13,6 +13,43 @@ static inline PyObject* mut_element_to_primitive(yyjson_mut_val* val);
 static inline PyObject* element_to_primitive(yyjson_val* val);
 
 /**
+ * Count the number of UTF-8 characters in the given string.
+ */
+static inline size_t num_utf8_chars(const char *src, size_t len) {
+    size_t count = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (yyjson_likely(src[i] >> 6 != 2)) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/**
+ * Convert the given UTF-8 string into a Python unicode object.
+ */
+static inline PyObject *unicode_from_str(const char *src, size_t len) {
+#ifndef PYPY_VERSION
+    // Exploit the internals of CPython's unicode implementation to
+    // implement a fast-path for ASCII data, which is by far the
+    // most common case. This is the single greatest performance gain
+    // of any optimization in this library.
+    size_t num_chars = num_utf8_chars(src, len);
+
+    if (yyjson_likely(num_chars == len)) {
+        PyObject *uni = PyUnicode_New(len, 127);
+        if (!uni) return NULL;
+        PyASCIIObject *uni_ascii = (PyASCIIObject*)uni;
+        memcpy(uni_ascii + 1, src, len);
+        return uni;
+    }
+#endif
+
+    return PyUnicode_DecodeUTF8(src, len, NULL);
+}
+
+
+/**
  * Recursively convert the given value into an equivalent high-level Python
  * object.
  **/
@@ -41,8 +78,7 @@ static inline PyObject* element_to_primitive(yyjson_val* val) {
     case YYJSON_TYPE_STR: {
       size_t str_len = yyjson_get_len(val);
       const char* str = yyjson_get_str(val);
-
-      return PyUnicode_FromStringAndSize(str, str_len);
+      return unicode_from_str(str, str_len);
     }
     case YYJSON_TYPE_ARR: {
       PyObject* arr = PyList_New(yyjson_arr_size(val));
@@ -76,6 +112,8 @@ static inline PyObject* element_to_primitive(yyjson_val* val) {
 
       yyjson_val *obj_key, *obj_val;
       PyObject *py_key, *py_val;
+      const char *str;
+      size_t str_len;
 
       yyjson_obj_iter iter = {0};
       yyjson_obj_iter_init(val, &iter);
@@ -83,7 +121,10 @@ static inline PyObject* element_to_primitive(yyjson_val* val) {
       while ((obj_key = yyjson_obj_iter_next(&iter))) {
         obj_val = yyjson_obj_iter_get_val(obj_key);
 
-        py_key = element_to_primitive(obj_key);
+        str_len = yyjson_get_len(obj_key);
+        str = yyjson_get_str(obj_key);
+
+        py_key = unicode_from_str(str, str_len);
         py_val = element_to_primitive(obj_val);
 
         if (!py_key) {
