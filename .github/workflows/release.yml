@@ -2,6 +2,7 @@ on:
   release:
     types:
       - published
+  workflow_dispatch:
 
 name: Create release
 
@@ -66,7 +67,7 @@ jobs:
           platforms: all
 
       - name: Build & test wheels
-        uses: pypa/cibuildwheel@v2
+        uses: pypa/cibuildwheel@v2.15
         env:
           CIBW_ARCHS_LINUX: auto aarch64 ppc64le s390x
           CIBW_ARCHS_MACOS: x86_64 arm64 universal2
