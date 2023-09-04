@@ -12,6 +12,9 @@
 static inline PyObject* mut_element_to_primitive(yyjson_mut_val* val);
 static inline PyObject* element_to_primitive(yyjson_val* val);
 
+static PyObject* pathlib = NULL;
+static PyObject* path = NULL;
+
 /**
  * Count the number of UTF-8 characters in the given string.
  */
@@ -421,10 +424,54 @@ static int Document_init(DocumentObject* self, PyObject* args, PyObject* kwds) {
     return -1;
   }
 
-  PyObject* pathlib = PyImport_ImportModule("pathlib");
-  PyObject* path = PyObject_GetAttrString(pathlib, "Path");
+  if (yyjson_unlikely(pathlib == NULL)) {
+    pathlib = PyImport_ImportModule("pathlib");
+    if (yyjson_unlikely(pathlib == NULL)) {
+      return -1;
+    }
+    path = PyObject_GetAttrString(pathlib, "Path");
+    if (yyjson_unlikely(path == NULL)) {
+      return -1;
+    }
+  }
 
-  if (PyObject_IsInstance(content, path)) {
+  if (yyjson_likely(PyBytes_Check(content))) {
+    Py_ssize_t content_len;
+    const char* content_as_utf8 = NULL;
+
+    PyBytes_AsStringAndSize(content, (char**)&content_as_utf8, &content_len);
+
+    self->i_doc = yyjson_read_opts(
+        // As long as we don't expose the insitu reader flag, it's safe to
+        // discard the const here.
+        (char*)content_as_utf8, content_len, r_flag, self->alc, &err);
+
+    if (!self->i_doc) {
+      PyErr_SetString(PyExc_ValueError, err.msg);
+      return -1;
+    }
+
+    return 0;
+
+  } else if (yyjson_likely(PyUnicode_Check(content))) {
+    // We were given a string, so just parse it into a document.
+    Py_ssize_t content_len;
+    const char* content_as_utf8 = NULL;
+
+    content_as_utf8 = PyUnicode_AsUTF8AndSize(content, &content_len);
+
+    self->i_doc = yyjson_read_opts(
+        // As long as we don't expose the insitu reader flag, it's safe to
+        // discard the const here.
+        (char*)content_as_utf8, content_len, r_flag, self->alc, &err);
+
+    if (!self->i_doc) {
+      PyErr_SetString(PyExc_ValueError, err.msg);
+      return -1;
+    }
+
+    return 0;
+  } else if (yyjson_unlikely(PyObject_IsInstance(content, path))) {
     // We were given a Path object to a location on disk.
     PyObject* as_str = PyObject_Str(content);
     if (!as_str) {
@@ -442,28 +489,6 @@ static int Document_init(DocumentObject* self, PyObject* args, PyObject* kwds) {
 
     Py_XDECREF(as_str);
     Py_XDECREF(str);
-
-    if (!self->i_doc) {
-      PyErr_SetString(PyExc_ValueError, err.msg);
-      return -1;
-    }
-
-    return 0;
-  } else if (PyUnicode_Check(content) || PyBytes_Check(content)) {
-    // We were given a string, so just parse it into a document.
-    Py_ssize_t content_len;
-    const char* content_as_utf8 = NULL;
-
-    if (PyUnicode_Check(content)) {
-      content_as_utf8 = PyUnicode_AsUTF8AndSize(content, &content_len);
-    } else {
-      PyBytes_AsStringAndSize(content, (char**)&content_as_utf8, &content_len);
-    }
-
-    self->i_doc = yyjson_read_opts(
-        // As long as we don't expose the insitu reader flag, it's safe to
-        // discard the const here.
-        (char*)content_as_utf8, content_len, r_flag, self->alc, &err);
 
     if (!self->i_doc) {
       PyErr_SetString(PyExc_ValueError, err.msg);
