@@ -109,4 +109,4 @@ def dump(
     sort_keys=False,
     **kw
 ):
-    fp.write(Document(obj).dumps().encode("utf-8"))
+    fp.write(Document(obj).dumps())

@@ -3,7 +3,7 @@ Test the shims for compatibility with the standard library JSON module.
 
 We ignore most options.
 """
-from io import BytesIO
+from io import BytesIO, StringIO
 
 import yyjson
 
@@ -12,9 +12,9 @@ def test_dump():
     """
     Ensure we can dump a document to a string.
     """
-    with BytesIO() as test:
+    with StringIO() as test:
         yyjson.dump({"a": 1, "b": 2}, test)
-        assert test.getvalue() == b'{"a":1,"b":2}'
+        assert test.getvalue() == '{"a":1,"b":2}'
 
 
 def test_dumps():
