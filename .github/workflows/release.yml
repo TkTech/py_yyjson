@@ -62,7 +62,7 @@ jobs:
 
       - name: Set up QEMU
         if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v2.2
+        uses: docker/setup-qemu-action@v2.2.0
         with:
           platforms: all
 
