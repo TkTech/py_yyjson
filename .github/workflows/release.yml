@@ -1,8 +1,7 @@
 on:
-  push:
-    # Sequence of patterns matched against refs/tags
-    tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+  release:
+    types:
+      - published
 
 name: Create release
 
@@ -13,10 +12,10 @@ jobs:
     name: Creating source release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Setting up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
 
@@ -38,7 +37,7 @@ jobs:
         run: |
           cd docs && make clean && make html
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: dist/*.tar.gz
 
@@ -53,9 +52,9 @@ jobs:
         py: ["cp37", "cp38", "cp39", "cp310", "cp311", "pp37", "pp38", "pp39"]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         name: Setting up Python
         with:
           python-version: '3.8'
@@ -67,14 +66,14 @@ jobs:
           platforms: all
 
       - name: Build & test wheels
-        uses: pypa/cibuildwheel@v2.12.3
+        uses: pypa/cibuildwheel@v2
         env:
           CIBW_ARCHS_LINUX: auto aarch64 ppc64le s390x
           CIBW_ARCHS_MACOS: x86_64 arm64 universal2
           CIBW_BUILD: "${{ matrix.py }}-*"
           CIBW_TEST_SKIP: "*_arm64 *_universal2:arm64"
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: ./wheelhouse/*.whl
 
@@ -98,10 +97,10 @@ jobs:
     needs: [upload_all]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Setting up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
 
