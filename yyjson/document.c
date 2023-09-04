@@ -34,6 +34,9 @@ static inline PyObject *unicode_from_str(const char *src, size_t len) {
     // implement a fast-path for ASCII data, which is by far the
     // most common case. This is the single greatest performance gain
     // of any optimization in this library.
+    //
+    // The details of these structures are here:
+    //    https://github.com/python/cpython/blob/main/Include/cpython/unicodeobject.h#L53
     size_t num_chars = num_utf8_chars(src, len);
 
     if (yyjson_likely(num_chars == len)) {
