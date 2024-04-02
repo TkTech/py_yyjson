@@ -1,12 +1,30 @@
 /*==============================================================================
- * Created by Yaoyuan on 2019/3/9.
- * Copyright (C) 2019 Yaoyuan <ibireme@gmail.com>.
- *
- * Released under the MIT License:
- * https://github.com/ibireme/yyjson/blob/master/LICENSE
+ Copyright (c) 2020 YaoYuan <ibireme@gmail.com>
+ 
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ 
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ 
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
  *============================================================================*/
 
-/** @file yyjson.h */
+/** 
+ @file yyjson.h
+ @date 2019-03-09
+ @author YaoYuan
+ */
 
 #ifndef YYJSON_H
 #define YYJSON_H
@@ -17,6 +35,7 @@
  * Header Files
  *============================================================================*/
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <limits.h>
@@ -30,12 +49,12 @@
  *============================================================================*/
 
 /*
- Define as 1 to disable JSON reader if you don't need to parse JSON.
+ Define as 1 to disable JSON reader if JSON parsing is not required.
  
  This will disable these functions at compile-time:
+    - yyjson_read()
     - yyjson_read_opts()
     - yyjson_read_file()
-    - yyjson_read()
     - yyjson_read_number()
     - yyjson_mut_read_number()
  
@@ -45,7 +64,7 @@
 #endif
 
 /*
- Define as 1 to disable JSON writer if you don't need to serialize JSON.
+ Define as 1 to disable JSON writer if JSON serialization is not required.
  
  This will disable these functions at compile-time:
     - yyjson_write()
@@ -107,19 +126,36 @@
     - YYJSON_WRITE_ALLOW_INF_AND_NAN
     - YYJSON_WRITE_ALLOW_INVALID_UNICODE
  
- This will reduce the binary size by about 10%, and slightly improve the JSON
- read/write speed.
+ This will reduce the binary size by about 10%, and speed up the reading and
+ writing speed by about 2% to 6%.
  */
 #ifndef YYJSON_DISABLE_NON_STANDARD
 #endif
 
 /*
- Define as 1 to disable unaligned memory access if target architecture does not
- support unaligned memory access (such as some embedded processors).
+ Define as 1 to disable UTF-8 validation at compile time.
  
- If this value is not defined, yyjson will perform some automatic detection.
- The wrong definition of this option may cause some performance degradation,
- but will not cause any run-time errors.
+ If all input strings are guaranteed to be valid UTF-8 encoding (for example,
+ some language's String object has already validated the encoding), using this
+ flag can avoid redundant UTF-8 validation in yyjson.
+ 
+ This flag can speed up the reading and writing speed of non-ASCII encoded
+ strings by about 3% to 7%.
+ 
+ Note: If this flag is used while passing in illegal UTF-8 strings, the
+ following errors may occur:
+ - Escaped characters may be ignored when parsing JSON strings.
+ - Ending quotes may be ignored when parsing JSON strings, causing the string
+   to be concatenated to the next value.
+ - When accessing `yyjson_mut_val` for serialization, the string ending may be
+   accessed out of bounds, causing a segmentation fault.
+ */
+#ifndef YYJSON_DISABLE_UTF8_VALIDATION
+#endif
+
+/*
+ Define as 1 to indicate that the target architecture does not support unaligned
+ memory access. Please refer to the comments in the C file for details.
  */
 #ifndef YYJSON_DISABLE_UNALIGNED_MEMORY_ACCESS
 #endif
@@ -156,8 +192,26 @@
 /** compiler version (GCC) */
 #ifdef __GNUC__
 #   define YYJSON_GCC_VER __GNUC__
+#   if defined(__GNUC_PATCHLEVEL__)
+#       define yyjson_gcc_available(major, minor, patch) \
+            ((__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__) \
+            >= (major * 10000 + minor * 100 + patch))
+#   else
+#       define yyjson_gcc_available(major, minor, patch) \
+            ((__GNUC__ * 10000 + __GNUC_MINOR__ * 100) \
+            >= (major * 10000 + minor * 100 + patch))
+#   endif
 #else
 #   define YYJSON_GCC_VER 0
+#   define yyjson_gcc_available(major, minor, patch) 0
+#endif
+
+/** real gcc check */
+#if !defined(__clang__) && !defined(__INTEL_COMPILER) && !defined(__ICC) && \
+    defined(__GNUC__)
+#   define YYJSON_IS_REAL_GCC 1
+#else
+#   define YYJSON_IS_REAL_GCC 0
 #endif
 
 /** C version (STDC) */
@@ -268,6 +322,17 @@
 #       define yyjson_unlikely(expr) __builtin_expect(!!(expr), 0)
 #   else
 #       define yyjson_unlikely(expr) (expr)
+#   endif
+#endif
+
+/** compile-time constant check for compiler */
+#ifndef yyjson_constant_p
+#   if yyjson_has_builtin(__builtin_constant_p) || (YYJSON_GCC_VER >= 3)
+#       define YYJSON_HAS_CONSTANT_P 1
+#       define yyjson_constant_p(value) __builtin_constant_p(value)
+#   else
+#       define YYJSON_HAS_CONSTANT_P 0
+#       define yyjson_constant_p(value) 0
 #   endif
 #endif
 
@@ -462,16 +527,16 @@ extern "C" {
 #define YYJSON_VERSION_MAJOR  0
 
 /** The minor version of yyjson. */
-#define YYJSON_VERSION_MINOR  6
+#define YYJSON_VERSION_MINOR  8
 
 /** The patch version of yyjson. */
 #define YYJSON_VERSION_PATCH  0
 
 /** The version of yyjson in hex: `(major << 16) | (minor << 8) | (patch)`. */
-#define YYJSON_VERSION_HEX    0x000600
+#define YYJSON_VERSION_HEX    0x000800
 
 /** The version string of yyjson. */
-#define YYJSON_VERSION_STRING "0.6.0"
+#define YYJSON_VERSION_STRING "0.8.0"
 
 /** The version of yyjson in hex, same as `YYJSON_VERSION_HEX`. */
 yyjson_api uint32_t yyjson_version(void);
@@ -482,34 +547,57 @@ yyjson_api uint32_t yyjson_version(void);
  * JSON Types
  *============================================================================*/
 
-/** Type of JSON value (3 bit). */
+/** Type of a JSON value (3 bit). */
 typedef uint8_t yyjson_type;
+/** No type, invalid. */
 #define YYJSON_TYPE_NONE        ((uint8_t)0)        /* _____000 */
+/** Raw string type, no subtype. */
 #define YYJSON_TYPE_RAW         ((uint8_t)1)        /* _____001 */
+/** Null type: `null` literal, no subtype. */
 #define YYJSON_TYPE_NULL        ((uint8_t)2)        /* _____010 */
+/** Boolean type, subtype: TRUE, FALSE. */
 #define YYJSON_TYPE_BOOL        ((uint8_t)3)        /* _____011 */
+/** Number type, subtype: UINT, SINT, REAL. */
 #define YYJSON_TYPE_NUM         ((uint8_t)4)        /* _____100 */
+/** String type, subtype: NONE, NOESC. */
 #define YYJSON_TYPE_STR         ((uint8_t)5)        /* _____101 */
+/** Array type, no subtype. */
 #define YYJSON_TYPE_ARR         ((uint8_t)6)        /* _____110 */
+/** Object type, no subtype. */
 #define YYJSON_TYPE_OBJ         ((uint8_t)7)        /* _____111 */
 
-/** Subtype of JSON value (2 bit). */
+/** Subtype of a JSON value (2 bit). */
 typedef uint8_t yyjson_subtype;
+/** No subtype. */
 #define YYJSON_SUBTYPE_NONE     ((uint8_t)(0 << 3)) /* ___00___ */
+/** False subtype: `false` literal. */
 #define YYJSON_SUBTYPE_FALSE    ((uint8_t)(0 << 3)) /* ___00___ */
+/** True subtype: `true` literal. */
 #define YYJSON_SUBTYPE_TRUE     ((uint8_t)(1 << 3)) /* ___01___ */
+/** Unsigned integer subtype: `uint64_t`. */
 #define YYJSON_SUBTYPE_UINT     ((uint8_t)(0 << 3)) /* ___00___ */
+/** Signed integer subtype: `int64_t`. */
 #define YYJSON_SUBTYPE_SINT     ((uint8_t)(1 << 3)) /* ___01___ */
+/** Real number subtype: `double`. */
 #define YYJSON_SUBTYPE_REAL     ((uint8_t)(2 << 3)) /* ___10___ */
+/** String that do not need to be escaped for writing (internal use). */
+#define YYJSON_SUBTYPE_NOESC    ((uint8_t)(1 << 3)) /* ___01___ */
 
-/** Mask and bits of JSON value tag. */
+/** The mask used to extract the type of a JSON value. */
 #define YYJSON_TYPE_MASK        ((uint8_t)0x07)     /* _____111 */
+/** The number of bits used by the type. */
 #define YYJSON_TYPE_BIT         ((uint8_t)3)
+/** The mask used to extract the subtype of a JSON value. */
 #define YYJSON_SUBTYPE_MASK     ((uint8_t)0x18)     /* ___11___ */
+/** The number of bits used by the subtype. */
 #define YYJSON_SUBTYPE_BIT      ((uint8_t)2)
+/** The mask used to extract the reserved bits of a JSON value. */
 #define YYJSON_RESERVED_MASK    ((uint8_t)0xE0)     /* 111_____ */
+/** The number of reserved bits. */
 #define YYJSON_RESERVED_BIT     ((uint8_t)3)
+/** The mask used to extract the tag of a JSON value. */
 #define YYJSON_TAG_MASK         ((uint8_t)0xFF)     /* 11111111 */
+/** The number of bits used by the tag. */
 #define YYJSON_TAG_BIT          ((uint8_t)8)
 
 /** Padding size for JSON reader. */
@@ -541,13 +629,17 @@ typedef struct yyjson_alc {
 /**
  A pool allocator uses fixed length pre-allocated memory.
  
- This allocator may used to avoid malloc/realloc calls. The pre-allocated memory
- should be held by the caller. The maximum amount of memory required to read a
- JSON can be calculated using the `yyjson_read_max_memory_usage()` function, but
- the amount of memory required to write a JSON cannot be directly calculated.
+ This allocator may be used to avoid malloc/realloc calls. The pre-allocated 
+ memory should be held by the caller. The maximum amount of memory required to
+ read a JSON can be calculated using the `yyjson_read_max_memory_usage()`
+ function, but the amount of memory required to write a JSON cannot be directly 
+ calculated.
  
- This is not a general-purpose allocator, and should only be used to read or
- write single JSON document.
+ This is not a general-purpose allocator. It is designed to handle a single JSON
+ data at a time. If it is used for overly complex memory tasks, such as parsing
+ multiple JSON documents using the same allocator but releasing only a few of
+ them, it may cause memory fragmentation, resulting in performance degradation
+ and memory waste.
  
  @param alc The allocator to be initialized.
     If this parameter is NULL, the function will fail and return false.
@@ -570,8 +662,30 @@ typedef struct yyjson_alc {
     yyjson_doc *doc = yyjson_read_opts(json, strlen(json), 0, &alc, NULL);
     // the memory of `doc` is on the stack
  @endcode
+ 
+ @warning This Allocator is not thread-safe.
  */
 yyjson_api bool yyjson_alc_pool_init(yyjson_alc *alc, void *buf, size_t size);
+
+/**
+ A dynamic allocator.
+ 
+ This allocator has a similar usage to the pool allocator above. However, when
+ there is not enough memory, this allocator will dynamically request more memory
+ using libc's `malloc` function, and frees it all at once when it is destroyed.
+ 
+ @return A new dynamic allocator, or NULL if memory allocation failed.
+ @note The returned value should be freed with `yyjson_alc_dyn_free()`.
+ 
+ @warning This Allocator is not thread-safe.
+ */
+yyjson_api yyjson_alc *yyjson_alc_dyn_new(void);
+
+/**
+ Free a dynamic allocator which is created by `yyjson_alc_dyn_new()`.
+ @param alc The dynamic allocator to be destroyed.
+ */
+yyjson_api void yyjson_alc_dyn_free(yyjson_alc *alc);
 
 
 
@@ -621,10 +735,10 @@ typedef uint32_t yyjson_read_flag;
     - Read negative integer as int64_t.
     - Read floating-point number as double with round-to-nearest mode.
     - Read integer which cannot fit in uint64_t or int64_t as double.
-    - Report error if real number is infinity.
+    - Report error if double number is infinity.
     - Report error if string contains invalid UTF-8 character or BOM.
     - Report error on trailing commas, comments, inf and nan literals. */
-static const yyjson_read_flag YYJSON_READ_NOFLAG                = 0 << 0;
+static const yyjson_read_flag YYJSON_READ_NOFLAG                = 0;
 
 /** Read the input data in-situ.
     This option allows the reader to modify and use input data to store string
@@ -650,7 +764,7 @@ static const yyjson_read_flag YYJSON_READ_ALLOW_COMMENTS        = 1 << 3;
     such as 1e999, NaN, inf, -Infinity (non-standard). */
 static const yyjson_read_flag YYJSON_READ_ALLOW_INF_AND_NAN     = 1 << 4;
 
-/** Read number as raw string (value with `YYJSON_TYPE_RAW` type),
+/** Read all numbers as raw strings (value with `YYJSON_TYPE_RAW` type),
     inf/nan literal is also read as raw with `ALLOW_INF_AND_NAN` flag. */
 static const yyjson_read_flag YYJSON_READ_NUMBER_AS_RAW         = 1 << 5;
 
@@ -663,6 +777,12 @@ static const yyjson_read_flag YYJSON_READ_NUMBER_AS_RAW         = 1 << 5;
     option is used, you need to handle these strings carefully to avoid security
     risks. */
 static const yyjson_read_flag YYJSON_READ_ALLOW_INVALID_UNICODE = 1 << 6;
+
+/** Read big numbers as raw strings. These big numbers include integers that
+    cannot be represented by `int64_t` and `uint64_t`, and floating-point
+    numbers that cannot be represented by finite `double`.
+    The flag will be overridden by `YYJSON_READ_NUMBER_AS_RAW` flag. */
+static const yyjson_read_flag YYJSON_READ_BIGNUM_AS_RAW         = 1 << 7;
 
 
 
@@ -778,6 +898,28 @@ yyjson_api yyjson_doc *yyjson_read_file(const char *path,
                                         yyjson_read_err *err);
 
 /**
+ Read JSON from a file pointer.
+ 
+ @param fp The file pointer.
+    The data will be read from the current position of the FILE to the end.
+    If this fp is NULL or invalid, the function will fail and return NULL.
+ @param flg The JSON read options.
+    Multiple options can be combined with `|` operator. 0 means no options.
+ @param alc The memory allocator used by JSON reader.
+    Pass NULL to use the libc's default allocator.
+ @param err A pointer to receive error information.
+    Pass NULL if you don't need error information.
+ @return A new JSON document, or NULL if an error occurs.
+    When it's no longer needed, it should be freed with `yyjson_doc_free()`.
+ 
+ @warning On 32-bit operating system, files larger than 2GB may fail to read.
+ */
+yyjson_api yyjson_doc *yyjson_read_fp(FILE *fp,
+                                      yyjson_read_flag flg,
+                                      const yyjson_alc *alc,
+                                      yyjson_read_err *err);
+
+/**
  Read a JSON string.
  
  This function is thread-safe.
@@ -868,7 +1010,7 @@ yyjson_api_inline size_t yyjson_read_max_memory_usage(size_t len,
     The value will hold either UINT or SINT or REAL number;
  @param flg The JSON read options.
     Multiple options can be combined with `|` operator. 0 means no options.
-    Suppors `YYJSON_READ_NUMBER_AS_RAW` and `YYJSON_READ_ALLOW_INF_AND_NAN`.
+    Supports `YYJSON_READ_NUMBER_AS_RAW` and `YYJSON_READ_ALLOW_INF_AND_NAN`.
  @param alc The memory allocator used for long number.
     It is only used when the built-in floating point reader is disabled.
     Pass NULL to use the libc's default allocator.
@@ -895,7 +1037,7 @@ yyjson_api const char *yyjson_read_number(const char *dat,
     The value will hold either UINT or SINT or REAL number;
  @param flg The JSON read options.
     Multiple options can be combined with `|` operator. 0 means no options.
-    Suppors `YYJSON_READ_NUMBER_AS_RAW` and `YYJSON_READ_ALLOW_INF_AND_NAN`.
+    Supports `YYJSON_READ_NUMBER_AS_RAW` and `YYJSON_READ_ALLOW_INF_AND_NAN`.
  @param alc The memory allocator used for long number.
     It is only used when the built-in floating point reader is disabled.
     Pass NULL to use the libc's default allocator.
@@ -925,7 +1067,7 @@ typedef uint32_t yyjson_write_flag;
     - Report error on inf or nan number.
     - Report error on invalid UTF-8 string.
     - Do not escape unicode or slash. */
-static const yyjson_write_flag YYJSON_WRITE_NOFLAG                  = 0 << 0;
+static const yyjson_write_flag YYJSON_WRITE_NOFLAG                  = 0;
 
 /** Write JSON pretty with 4 space indent. */
 static const yyjson_write_flag YYJSON_WRITE_PRETTY                  = 1 << 0;
@@ -953,6 +1095,10 @@ static const yyjson_write_flag YYJSON_WRITE_ALLOW_INVALID_UNICODE   = 1 << 5;
 /** Write JSON pretty with 2 space indent.
     This flag will override `YYJSON_WRITE_PRETTY` flag. */
 static const yyjson_write_flag YYJSON_WRITE_PRETTY_TWO_SPACES       = 1 << 6;
+
+/** Adds a newline character `\n` at the end of the JSON.
+    This can be helpful for text editors or NDJSON. */
+static const yyjson_write_flag YYJSON_WRITE_NEWLINE_AT_END          = 1 << 7;
 
 
 
@@ -1052,6 +1198,30 @@ yyjson_api bool yyjson_write_file(const char *path,
                                   yyjson_write_err *err);
 
 /**
+ Write a document to file pointer with options.
+ 
+ @param fp The file pointer.
+    The data will be written to the current position of the file.
+    If this fp is NULL or invalid, the function will fail and return false.
+ @param doc The JSON document.
+    If this doc is NULL or has no root, the function will fail and return false.
+ @param flg The JSON write options.
+    Multiple options can be combined with `|` operator. 0 means no options.
+ @param alc The memory allocator used by JSON writer.
+    Pass NULL to use the libc's default allocator.
+ @param err A pointer to receive error information.
+    Pass NULL if you don't need error information.
+ @return true if successful, false if an error occurs.
+ 
+ @warning On 32-bit operating system, files larger than 2GB may fail to write.
+ */
+yyjson_api bool yyjson_write_fp(FILE *fp,
+                                const yyjson_doc *doc,
+                                yyjson_write_flag flg,
+                                const yyjson_alc *alc,
+                                yyjson_write_err *err);
+
+/**
  Write a document to JSON string.
  
  This function is thread-safe.
@@ -1129,6 +1299,30 @@ yyjson_api bool yyjson_mut_write_file(const char *path,
                                       yyjson_write_flag flg,
                                       const yyjson_alc *alc,
                                       yyjson_write_err *err);
+
+/**
+ Write a document to file pointer with options.
+ 
+ @param fp The file pointer.
+    The data will be written to the current position of the file.
+    If this fp is NULL or invalid, the function will fail and return false.
+ @param doc The mutable JSON document.
+    If this doc is NULL or has no root, the function will fail and return false.
+ @param flg The JSON write options.
+    Multiple options can be combined with `|` operator. 0 means no options.
+ @param alc The memory allocator used by JSON writer.
+    Pass NULL to use the libc's default allocator.
+ @param err A pointer to receive error information.
+    Pass NULL if you don't need error information.
+ @return true if successful, false if an error occurs.
+ 
+ @warning On 32-bit operating system, files larger than 2GB may fail to write.
+ */
+yyjson_api bool yyjson_mut_write_fp(FILE *fp,
+                                    const yyjson_mut_doc *doc,
+                                    yyjson_write_flag flg,
+                                    const yyjson_alc *alc,
+                                    yyjson_write_err *err);
 
 /**
  Write a document to JSON string.
@@ -1213,6 +1407,30 @@ yyjson_api bool yyjson_val_write_file(const char *path,
                                       yyjson_write_err *err);
 
 /**
+ Write a value to file pointer with options.
+ 
+ @param fp The file pointer.
+    The data will be written to the current position of the file.
+    If this path is NULL or invalid, the function will fail and return false.
+ @param val The JSON root value.
+    If this parameter is NULL, the function will fail and return NULL.
+ @param flg The JSON write options.
+    Multiple options can be combined with `|` operator. 0 means no options.
+ @param alc The memory allocator used by JSON writer.
+    Pass NULL to use the libc's default allocator.
+ @param err A pointer to receive error information.
+    Pass NULL if you don't need error information.
+ @return true if successful, false if an error occurs.
+ 
+ @warning On 32-bit operating system, files larger than 2GB may fail to write.
+ */
+yyjson_api bool yyjson_val_write_fp(FILE *fp,
+                                    const yyjson_val *val,
+                                    yyjson_write_flag flg,
+                                    const yyjson_alc *alc,
+                                    yyjson_write_err *err);
+
+/**
  Write a value to JSON string.
  
  This function is thread-safe.
@@ -1288,6 +1506,30 @@ yyjson_api bool yyjson_mut_val_write_file(const char *path,
                                           yyjson_write_flag flg,
                                           const yyjson_alc *alc,
                                           yyjson_write_err *err);
+
+/**
+ Write a value to JSON file with options.
+ 
+ @param fp The file pointer.
+    The data will be written to the current position of the file.
+    If this path is NULL or invalid, the function will fail and return false.
+ @param val The mutable JSON root value.
+    If this parameter is NULL, the function will fail and return NULL.
+ @param flg The JSON write options.
+    Multiple options can be combined with `|` operator. 0 means no options.
+ @param alc The memory allocator used by JSON writer.
+    Pass NULL to use the libc's default allocator.
+ @param err A pointer to receive error information.
+    Pass NULL if you don't need error information.
+ @return true if successful, false if an error occurs.
+ 
+ @warning On 32-bit operating system, files larger than 2GB may fail to write.
+ */
+yyjson_api bool yyjson_mut_val_write_fp(FILE *fp,
+                                        const yyjson_mut_val *val,
+                                        yyjson_write_flag flg,
+                                        const yyjson_alc *alc,
+                                        yyjson_write_err *err);
 
 /**
  Write a value to JSON string.
@@ -3340,7 +3582,7 @@ yyjson_api_inline bool yyjson_mut_obj_rotate(yyjson_mut_val *obj,
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_null(yyjson_mut_doc *doc,
                                                yyjson_mut_val *obj,
@@ -3350,7 +3592,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_null(yyjson_mut_doc *doc,
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_true(yyjson_mut_doc *doc,
                                                yyjson_mut_val *obj,
@@ -3360,7 +3602,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_true(yyjson_mut_doc *doc,
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_false(yyjson_mut_doc *doc,
                                                 yyjson_mut_val *obj,
@@ -3370,7 +3612,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_false(yyjson_mut_doc *doc,
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_bool(yyjson_mut_doc *doc,
                                                yyjson_mut_val *obj,
@@ -3380,7 +3622,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_bool(yyjson_mut_doc *doc,
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_uint(yyjson_mut_doc *doc,
                                                yyjson_mut_val *obj,
@@ -3390,7 +3632,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_uint(yyjson_mut_doc *doc,
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_sint(yyjson_mut_doc *doc,
                                                yyjson_mut_val *obj,
@@ -3400,7 +3642,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_sint(yyjson_mut_doc *doc,
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_int(yyjson_mut_doc *doc,
                                               yyjson_mut_val *obj,
@@ -3410,7 +3652,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_int(yyjson_mut_doc *doc,
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_real(yyjson_mut_doc *doc,
                                                yyjson_mut_val *obj,
@@ -3420,7 +3662,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_real(yyjson_mut_doc *doc,
     The `key` and `val` should be null-terminated UTF-8 strings.
     This function allows duplicated key in one object.
     
-    @warning The key/value string are not copied, you should keep these strings
+    @warning The key/value strings are not copied, you should keep these strings
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_str(yyjson_mut_doc *doc,
                                               yyjson_mut_val *obj,
@@ -3432,7 +3674,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_str(yyjson_mut_doc *doc,
     The `len` should be the length of the `val`, in bytes.
     This function allows duplicated key in one object.
     
-    @warning The key/value string are not copied, you should keep these strings
+    @warning The key/value strings are not copied, you should keep these strings
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_strn(yyjson_mut_doc *doc,
                                                yyjson_mut_val *obj,
@@ -3444,7 +3686,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_strn(yyjson_mut_doc *doc,
     The value string is copied.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_strcpy(yyjson_mut_doc *doc,
                                                  yyjson_mut_val *obj,
@@ -3457,18 +3699,44 @@ yyjson_api_inline bool yyjson_mut_obj_add_strcpy(yyjson_mut_doc *doc,
     The `len` should be the length of the `val`, in bytes.
     This function allows duplicated key in one object.
     
-    @warning The key/value string are not copied, you should keep these strings
+    @warning The key strings are not copied, you should keep these strings
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_strncpy(yyjson_mut_doc *doc,
                                                   yyjson_mut_val *obj,
                                                   const char *key,
                                                   const char *val, size_t len);
 
+/**
+ Creates and adds a new array to the target object.
+ The `key` should be a null-terminated UTF-8 string.
+ This function allows duplicated key in one object.
+ 
+ @warning The key string is not copied, you should keep these strings
+          unmodified for the lifetime of this JSON document.
+ @return The new array, or NULL on error.
+ */
+yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_add_arr(yyjson_mut_doc *doc,
+                                                         yyjson_mut_val *obj,
+                                                         const char *key);
+
+/**
+ Creates and adds a new object to the target object.
+ The `key` should be a null-terminated UTF-8 string.
+ This function allows duplicated key in one object.
+ 
+ @warning The key string is not copied, you should keep these strings
+          unmodified for the lifetime of this JSON document.
+ @return The new object, or NULL on error.
+ */
+yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_add_obj(yyjson_mut_doc *doc,
+                                                         yyjson_mut_val *obj,
+                                                         const char *key);
+
 /** Adds a JSON value at the end of the object.
     The `key` should be a null-terminated UTF-8 string.
     This function allows duplicated key in one object.
     
-    @warning The key string are not copied, you should keep the string
+    @warning The key string is not copied, you should keep the string
         unmodified for the lifetime of this JSON document. */
 yyjson_api_inline bool yyjson_mut_obj_add_val(yyjson_mut_doc *doc,
                                               yyjson_mut_val *obj,
@@ -4249,6 +4517,58 @@ struct yyjson_doc {
  * Unsafe JSON Value API (Implementation)
  *============================================================================*/
 
+/*
+ Whether the string does not need to be escaped for serialization.
+ This function is used to optimize the writing speed of small constant strings.
+ This function works only if the compiler can evaluate it at compile time.
+ 
+ Clang supports it since v8.0,
+    earlier versions do not support constant_p(strlen) and return false.
+ GCC supports it since at least v4.4,
+    earlier versions may compile it as run-time instructions.
+ ICC supports it since at least v16,
+    earlier versions are uncertain.
+ 
+ @param str The C string.
+ @param len The returnd value from strlen(str).
+ */
+yyjson_api_inline bool unsafe_yyjson_is_str_noesc(const char *str, size_t len) {
+#if YYJSON_HAS_CONSTANT_P && \
+    (!YYJSON_IS_REAL_GCC || yyjson_gcc_available(4, 4, 0))
+    if (yyjson_constant_p(len) && len <= 32) {
+        /*
+         Same as the following loop:
+         
+         for (size_t i = 0; i < len; i++) {
+             char c = str[i];
+             if (c < ' ' || c > '~' || c == '"' || c == '\\') return false;
+         }
+         
+         GCC evaluates it at compile time only if the string length is within 17
+         and -O3 (which turns on the -fpeel-loops flag) is used.
+         So the loop is unrolled for GCC.
+         */
+#       define yyjson_repeat32_incr(x) \
+            x(0)  x(1)  x(2)  x(3)  x(4)  x(5)  x(6)  x(7)  \
+            x(8)  x(9)  x(10) x(11) x(12) x(13) x(14) x(15) \
+            x(16) x(17) x(18) x(19) x(20) x(21) x(22) x(23) \
+            x(24) x(25) x(26) x(27) x(28) x(29) x(30) x(31)
+#       define yyjson_check_char_noesc(i) \
+            if (i < len) { \
+                char c = str[i]; \
+                if (c < ' ' || c > '~' || c == '"' || c == '\\') return false; }
+        yyjson_repeat32_incr(yyjson_check_char_noesc)
+#       undef yyjson_repeat32_incr
+#       undef yyjson_check_char_noesc
+        return true;
+    }
+#else
+    (void)str;
+    (void)len;
+#endif
+    return false;
+}
+
 yyjson_api_inline yyjson_type unsafe_yyjson_get_type(void *val) {
     uint8_t tag = (uint8_t)((yyjson_val *)val)->tag;
     return (yyjson_type)(tag & YYJSON_TYPE_MASK);
@@ -4402,9 +4722,8 @@ yyjson_api_inline yyjson_val *unsafe_yyjson_get_next(yyjson_val *val) {
 
 yyjson_api_inline bool unsafe_yyjson_equals_strn(void *val, const char *str,
                                                  size_t len) {
-    uint64_t tag = ((uint64_t)len << YYJSON_TAG_BIT) | YYJSON_TYPE_STR;
-    return ((yyjson_val *)val)->tag == tag &&
-    memcmp(((yyjson_val *)val)->uni.str, str, len) == 0;
+    return unsafe_yyjson_get_len(val) == len &&
+           memcmp(((yyjson_val *)val)->uni.str, str, len) == 0;
 }
 
 yyjson_api_inline bool unsafe_yyjson_equals_str(void *val, const char *str) {
@@ -4468,8 +4787,11 @@ yyjson_api_inline void unsafe_yyjson_set_real(void *val, double num) {
 }
 
 yyjson_api_inline void unsafe_yyjson_set_str(void *val, const char *str) {
-    unsafe_yyjson_set_type(val, YYJSON_TYPE_STR, YYJSON_SUBTYPE_NONE);
-    unsafe_yyjson_set_len(val, strlen(str));
+    size_t len = strlen(str);
+    bool noesc = unsafe_yyjson_is_str_noesc(str, len);
+    yyjson_subtype sub = noesc ? YYJSON_SUBTYPE_NOESC : YYJSON_SUBTYPE_NONE;
+    unsafe_yyjson_set_type(val, YYJSON_TYPE_STR, sub);
+    unsafe_yyjson_set_len(val, len);
     ((yyjson_val *)val)->uni.str = str;
 }
 
@@ -4511,6 +4833,7 @@ yyjson_api_inline size_t yyjson_doc_get_val_count(yyjson_doc *doc) {
 yyjson_api_inline void yyjson_doc_free(yyjson_doc *doc) {
     if (doc) {
         yyjson_alc alc = doc->alc;
+        memset(&doc->alc, 0, sizeof(alc));
         if (doc->str_pool) alc.free(alc.ctx, doc->str_pool);
         alc.free(alc.ctx, doc);
     }
@@ -4601,6 +4924,7 @@ yyjson_api_inline const char *yyjson_get_type_desc(yyjson_val *val) {
         case YYJSON_TYPE_RAW  | YYJSON_SUBTYPE_NONE:  return "raw";
         case YYJSON_TYPE_NULL | YYJSON_SUBTYPE_NONE:  return "null";
         case YYJSON_TYPE_STR  | YYJSON_SUBTYPE_NONE:  return "string";
+        case YYJSON_TYPE_STR  | YYJSON_SUBTYPE_NOESC: return "string";
         case YYJSON_TYPE_ARR  | YYJSON_SUBTYPE_NONE:  return "array";
         case YYJSON_TYPE_OBJ  | YYJSON_SUBTYPE_NONE:  return "object";
         case YYJSON_TYPE_BOOL | YYJSON_SUBTYPE_TRUE:  return "true";
@@ -4650,7 +4974,8 @@ yyjson_api_inline size_t yyjson_get_len(yyjson_val *val) {
 
 yyjson_api_inline bool yyjson_equals_str(yyjson_val *val, const char *str) {
     if (yyjson_likely(val && str)) {
-        return unsafe_yyjson_equals_str(val, str);
+        return unsafe_yyjson_is_str(val) &&
+               unsafe_yyjson_equals_str(val, str);
     }
     return false;
 }
@@ -4658,7 +4983,8 @@ yyjson_api_inline bool yyjson_equals_str(yyjson_val *val, const char *str) {
 yyjson_api_inline bool yyjson_equals_strn(yyjson_val *val, const char *str,
                                           size_t len) {
     if (yyjson_likely(val && str)) {
-        return unsafe_yyjson_equals_strn(val, str, len);
+        return unsafe_yyjson_is_str(val) &&
+               unsafe_yyjson_equals_strn(val, str, len);
     }
     return false;
 }
@@ -4835,15 +5161,11 @@ yyjson_api_inline yyjson_val *yyjson_obj_get(yyjson_val *obj,
 yyjson_api_inline yyjson_val *yyjson_obj_getn(yyjson_val *obj,
                                               const char *_key,
                                               size_t key_len) {
-    uint64_t tag = (((uint64_t)key_len) << YYJSON_TAG_BIT) | YYJSON_TYPE_STR;
     if (yyjson_likely(yyjson_is_obj(obj) && _key)) {
         size_t len = unsafe_yyjson_get_len(obj);
         yyjson_val *key = unsafe_yyjson_get_first(obj);
         while (len-- > 0) {
-            if (key->tag == tag &&
-                memcmp(key->uni.ptr, _key, key_len) == 0) {
-                return key + 1;
-            }
+            if (unsafe_yyjson_equals_strn(key, _key, key_len)) return key + 1;
             key = unsafe_yyjson_get_next(key + 1);
         }
     }
@@ -4911,8 +5233,7 @@ yyjson_api_inline yyjson_val *yyjson_obj_iter_getn(yyjson_obj_iter *iter,
         }
         while (idx++ < max) {
             yyjson_val *next = unsafe_yyjson_get_next(cur + 1);
-            if (unsafe_yyjson_get_len(cur) == key_len &&
-                memcmp(cur->uni.str, key, key_len) == 0) {
+            if (unsafe_yyjson_equals_strn(cur, key, key_len)) {
                 iter->idx = idx;
                 iter->cur = next;
                 return cur + 1;
@@ -5352,6 +5673,7 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_bool(yyjson_mut_doc *doc,
     if (yyjson_likely(doc)) {
         yyjson_mut_val *val = unsafe_yyjson_mut_val(doc, 1);
         if (yyjson_likely(val)) {
+            _val = !!_val;
             val->tag = YYJSON_TYPE_BOOL | (uint8_t)((uint8_t)_val << 3);
             return val;
         }
@@ -5405,7 +5727,18 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_real(yyjson_mut_doc *doc,
 
 yyjson_api_inline yyjson_mut_val *yyjson_mut_str(yyjson_mut_doc *doc,
                                                  const char *str) {
-    if (yyjson_likely(str)) return yyjson_mut_strn(doc, str, strlen(str));
+    if (yyjson_likely(doc && str)) {
+        size_t len = strlen(str);
+        bool noesc = unsafe_yyjson_is_str_noesc(str, len);
+        yyjson_subtype sub = noesc ? YYJSON_SUBTYPE_NOESC : YYJSON_SUBTYPE_NONE;
+        yyjson_mut_val *val = unsafe_yyjson_mut_val(doc, 1);
+        if (yyjson_likely(val)) {
+            val->tag = ((uint64_t)len << YYJSON_TAG_BIT) |
+                        (uint64_t)(YYJSON_TYPE_STR | sub);
+            val->uni.str = str;
+            return val;
+        }
+    }
     return NULL;
 }
 
@@ -5425,7 +5758,19 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_strn(yyjson_mut_doc *doc,
 
 yyjson_api_inline yyjson_mut_val *yyjson_mut_strcpy(yyjson_mut_doc *doc,
                                                     const char *str) {
-    if (yyjson_likely(str)) return yyjson_mut_strncpy(doc, str, strlen(str));
+    if (yyjson_likely(doc && str)) {
+        size_t len = strlen(str);
+        bool noesc = unsafe_yyjson_is_str_noesc(str, len);
+        yyjson_subtype sub = noesc ? YYJSON_SUBTYPE_NOESC : YYJSON_SUBTYPE_NONE;
+        yyjson_mut_val *val = unsafe_yyjson_mut_val(doc, 1);
+        char *new_str = unsafe_yyjson_mut_strncpy(doc, str, len);
+        if (yyjson_likely(val && new_str)) {
+            val->tag = ((uint64_t)len << YYJSON_TAG_BIT) |
+                        (uint64_t)(YYJSON_TYPE_STR | sub);
+            val->uni.str = new_str;
+            return val;
+        }
+    }
     return NULL;
 }
 
@@ -5581,7 +5926,8 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_arr(yyjson_mut_doc *doc) {
 yyjson_api_inline yyjson_mut_val *yyjson_mut_arr_with_bool(
     yyjson_mut_doc *doc, const bool *vals, size_t count) {
     yyjson_mut_arr_with_func({
-        val->tag = YYJSON_TYPE_BOOL | (uint8_t)((uint8_t)vals[i] << 3);
+        bool _val = !!vals[i];
+        val->tag = YYJSON_TYPE_BOOL | (uint8_t)((uint8_t)_val << 3);
     });
 }
 
@@ -6104,15 +6450,11 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_get(yyjson_mut_val *obj,
 yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_getn(yyjson_mut_val *obj,
                                                       const char *_key,
                                                       size_t key_len) {
-    uint64_t tag = (((uint64_t)key_len) << YYJSON_TAG_BIT) | YYJSON_TYPE_STR;
     size_t len = yyjson_mut_obj_size(obj);
     if (yyjson_likely(len && _key)) {
         yyjson_mut_val *key = ((yyjson_mut_val *)obj->uni.ptr)->next->next;
         while (len-- > 0) {
-            if (key->tag == tag &&
-                memcmp(key->uni.ptr, _key, key_len) == 0) {
-                return key->next;
-            }
+            if (unsafe_yyjson_equals_strn(key, _key, key_len)) return key->next;
             key = key->next->next;
         }
     }
@@ -6198,8 +6540,7 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_iter_getn(
         while (idx++ < max) {
             pre = cur;
             cur = cur->next->next;
-            if (unsafe_yyjson_get_len(cur) == key_len &&
-                memcmp(cur->uni.str, key, key_len) == 0) {
+            if (unsafe_yyjson_equals_strn(cur, key, key_len)) {
                 iter->idx += idx;
                 if (iter->idx > max) iter->idx -= max + 1;
                 iter->pre = pre;
@@ -6315,7 +6656,7 @@ yyjson_api_inline void unsafe_yyjson_mut_obj_add(yyjson_mut_val *obj,
 }
 
 yyjson_api_inline yyjson_mut_val *unsafe_yyjson_mut_obj_remove(
-    yyjson_mut_val *obj, const char *key, size_t key_len, uint64_t key_tag) {
+    yyjson_mut_val *obj, const char *key, size_t key_len) {
     size_t obj_len = unsafe_yyjson_get_len(obj);
     if (obj_len) {
         yyjson_mut_val *pre_key = (yyjson_mut_val *)obj->uni.ptr;
@@ -6323,8 +6664,7 @@ yyjson_api_inline yyjson_mut_val *unsafe_yyjson_mut_obj_remove(
         yyjson_mut_val *removed_item = NULL;
         size_t i;
         for (i = 0; i < obj_len; i++) {
-            if (key_tag == cur_key->tag &&
-                memcmp(key, cur_key->uni.ptr, key_len) == 0) {
+            if (unsafe_yyjson_equals_strn(cur_key, key, key_len)) {
                 if (!removed_item) removed_item = cur_key->next;
                 cur_key = cur_key->next->next;
                 pre_key->next->next = cur_key;
@@ -6353,8 +6693,7 @@ yyjson_api_inline bool unsafe_yyjson_mut_obj_replace(yyjson_mut_val *obj,
         yyjson_mut_val *cur_key = pre_key->next->next;
         size_t i;
         for (i = 0; i < obj_len; i++) {
-            if (key->tag == cur_key->tag &&
-                memcmp(key->uni.str, cur_key->uni.ptr, key_len) == 0) {
+            if (unsafe_yyjson_equals_strn(cur_key, key->uni.str, key_len)) {
                 cur_key->next->tag = val->tag;
                 cur_key->next->uni.u64 = val->uni.u64;
                 return true;
@@ -6395,9 +6734,8 @@ yyjson_api_inline bool yyjson_mut_obj_put(yyjson_mut_val *obj,
                         !yyjson_mut_is_str(key))) return false;
     key_len = unsafe_yyjson_get_len(key);
     yyjson_mut_obj_iter_init(obj, &iter);
-    while ((cur_key = yyjson_mut_obj_iter_next(&iter))) {
-        if (key->tag == cur_key->tag &&
-            memcmp(key->uni.str, cur_key->uni.ptr, key_len) == 0) {
+    while ((cur_key = yyjson_mut_obj_iter_next(&iter)) != 0) {
+        if (unsafe_yyjson_equals_strn(cur_key, key->uni.str, key_len)) {
             if (!replaced && val) {
                 replaced = true;
                 val->next = cur_key->next->next;
@@ -6437,8 +6775,7 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_remove(yyjson_mut_val *obj,
     yyjson_mut_val *key) {
     if (yyjson_likely(yyjson_mut_is_obj(obj) && yyjson_mut_is_str(key))) {
         return unsafe_yyjson_mut_obj_remove(obj, key->uni.str,
-                                            unsafe_yyjson_get_len(key),
-                                            key->tag);
+                                            unsafe_yyjson_get_len(key));
     }
     return NULL;
 }
@@ -6447,8 +6784,7 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_remove_key(
     yyjson_mut_val *obj, const char *key) {
     if (yyjson_likely(yyjson_mut_is_obj(obj) && key)) {
         size_t key_len = strlen(key);
-        uint64_t tag = ((uint64_t)key_len << YYJSON_TAG_BIT) | YYJSON_TYPE_STR;
-        return unsafe_yyjson_mut_obj_remove(obj, key, key_len, tag);
+        return unsafe_yyjson_mut_obj_remove(obj, key, key_len);
     }
     return NULL;
 }
@@ -6456,8 +6792,7 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_remove_key(
 yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_remove_keyn(
     yyjson_mut_val *obj, const char *key, size_t key_len) {
     if (yyjson_likely(yyjson_mut_is_obj(obj) && key)) {
-        uint64_t tag = ((uint64_t)key_len << YYJSON_TAG_BIT) | YYJSON_TYPE_STR;
-        return unsafe_yyjson_mut_obj_remove(obj, key, key_len, tag);
+        return unsafe_yyjson_mut_obj_remove(obj, key, key_len);
     }
     return NULL;
 }
@@ -6502,7 +6837,10 @@ yyjson_api_inline bool yyjson_mut_obj_rotate(yyjson_mut_val *obj,
         if (yyjson_likely(key)) { \
             size_t len = unsafe_yyjson_get_len(obj); \
             yyjson_mut_val *val = key + 1; \
-            key->tag = YYJSON_TYPE_STR | YYJSON_SUBTYPE_NONE; \
+            size_t key_len = strlen(_key); \
+            bool noesc = unsafe_yyjson_is_str_noesc(_key, key_len); \
+            key->tag = YYJSON_TYPE_STR; \
+            key->tag |= noesc ? YYJSON_SUBTYPE_NOESC : YYJSON_SUBTYPE_NONE; \
             key->tag |= (uint64_t)strlen(_key) << YYJSON_TAG_BIT; \
             key->uni.str = _key; \
             func \
@@ -6541,6 +6879,7 @@ yyjson_api_inline bool yyjson_mut_obj_add_bool(yyjson_mut_doc *doc,
                                                const char *_key,
                                                bool _val) {
     yyjson_mut_obj_add_func({
+        _val = !!_val;
         val->tag = YYJSON_TYPE_BOOL | (uint8_t)((uint8_t)(_val) << 3);
     });
 }
@@ -6591,7 +6930,10 @@ yyjson_api_inline bool yyjson_mut_obj_add_str(yyjson_mut_doc *doc,
                                               const char *_val) {
     if (yyjson_unlikely(!_val)) return false;
     yyjson_mut_obj_add_func({
+        size_t val_len = strlen(_val);
+        bool val_noesc = unsafe_yyjson_is_str_noesc(_val, val_len);
         val->tag = ((uint64_t)strlen(_val) << YYJSON_TAG_BIT) | YYJSON_TYPE_STR;
+        val->tag |= val_noesc ? YYJSON_SUBTYPE_NOESC : YYJSON_SUBTYPE_NONE;
         val->uni.str = _val;
     });
 }
@@ -6634,6 +6976,22 @@ yyjson_api_inline bool yyjson_mut_obj_add_strncpy(yyjson_mut_doc *doc,
     });
 }
 
+yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_add_arr(yyjson_mut_doc *doc,
+                                                         yyjson_mut_val *obj,
+                                                         const char *_key) {
+    yyjson_mut_val *key = yyjson_mut_str(doc, _key);
+    yyjson_mut_val *val = yyjson_mut_arr(doc);
+    return yyjson_mut_obj_add(obj, key, val) ? val : NULL;
+}
+
+yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_add_obj(yyjson_mut_doc *doc,
+                                                         yyjson_mut_val *obj,
+                                                         const char *_key) {
+    yyjson_mut_val *key = yyjson_mut_str(doc, _key);
+    yyjson_mut_val *val = yyjson_mut_obj(doc);
+    return yyjson_mut_obj_add(obj, key, val) ? val : NULL;
+}
+
 yyjson_api_inline bool yyjson_mut_obj_add_val(yyjson_mut_doc *doc,
                                               yyjson_mut_val *obj,
                                               const char *_key,
@@ -6657,8 +7015,7 @@ yyjson_api_inline yyjson_mut_val *yyjson_mut_obj_remove_strn(
         yyjson_mut_val *val_removed = NULL;
         yyjson_mut_obj_iter_init(obj, &iter);
         while ((key = yyjson_mut_obj_iter_next(&iter)) != NULL) {
-            if (unsafe_yyjson_get_len(key) == _len &&
-                memcmp(key->uni.str, _key, _len) == 0) {
+            if (unsafe_yyjson_equals_strn(key, _key, _len)) {
                 if (!val_removed) val_removed = key->next;
                 yyjson_mut_obj_iter_remove(&iter);
             }
@@ -7381,33 +7738,39 @@ yyjson_api_inline bool yyjson_ptr_get_bool(
 }
 
 /**
- Set provided `value` if the JSON Pointer (RFC 6901) exists and is type uint.
- Returns true if value at `ptr` exists and is the correct type, otherwise false.
+ Set provided `value` if the JSON Pointer (RFC 6901) exists and is an integer
+ that fits in `uint64_t`. Returns true if successful, otherwise false.
  */
 yyjson_api_inline bool yyjson_ptr_get_uint(
     yyjson_val *root, const char *ptr, uint64_t *value) {
     yyjson_val *val = yyjson_ptr_get(root, ptr);
-    if (value && yyjson_is_uint(val)) {
-        *value = unsafe_yyjson_get_uint(val);
-        return true;
-    } else {
-        return false;
+    if (value && val) {
+        uint64_t ret = val->uni.u64;
+        if (unsafe_yyjson_is_uint(val) ||
+            (unsafe_yyjson_is_sint(val) && !(ret >> 63))) {
+            *value = ret;
+            return true;
+        }
     }
+    return false;
 }
 
 /**
- Set provided `value` if the JSON Pointer (RFC 6901) exists and is type sint.
- Returns true if value at `ptr` exists and is the correct type, otherwise false.
+ Set provided `value` if the JSON Pointer (RFC 6901) exists and is an integer
+ that fits in `int64_t`. Returns true if successful, otherwise false.
  */
 yyjson_api_inline bool yyjson_ptr_get_sint(
     yyjson_val *root, const char *ptr, int64_t *value) {
     yyjson_val *val = yyjson_ptr_get(root, ptr);
-    if (value && yyjson_is_sint(val)) {
-        *value = unsafe_yyjson_get_sint(val);
-        return true;
-    } else {
-        return false;
+    if (value && val) {
+        int64_t ret = val->uni.i64;
+        if (unsafe_yyjson_is_sint(val) ||
+            (unsafe_yyjson_is_uint(val) && ret >= 0)) {
+            *value = ret;
+            return true;
+        }
     }
+    return false;
 }
 
 /**
