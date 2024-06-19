@@ -3,7 +3,11 @@
 
 #include "document.h"
 #include "memory.h"
+#include "decimal.h"
 #include "yyjson.h"
+
+PyObject *YY_DecimalModule = NULL;
+PyObject *YY_DecimalClass = NULL;
 
 static PyModuleDef yymodule = {
     PyModuleDef_HEAD_INIT, .m_name = "cyyjson",
@@ -27,6 +31,19 @@ PyMODINIT_FUNC PyInit_cyyjson(void) {
     Py_DECREF(m);
     return NULL;
   }
+
+  // We need to pre-import the Decimal module to have it available globally.
+  YY_DecimalModule = PyImport_ImportModule("decimal");
+  if (YY_DecimalModule == NULL) {
+    return NULL;
+  }
+  Py_INCREF(YY_DecimalModule);
+
+  YY_DecimalClass = PyObject_GetAttrString(YY_DecimalModule, "Decimal");
+  if (YY_DecimalClass == NULL) {
+    return NULL;
+  }
+  Py_INCREF(YY_DecimalClass);
 
   return m;
 }
