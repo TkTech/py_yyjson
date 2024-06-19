@@ -27,7 +27,7 @@ setup(
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
     ],
-    python_requires=">3.4",
+    python_requires=">=3.8",
     extras_require={
         # Dependencies for running tests.
         "test": ["pytest"],
