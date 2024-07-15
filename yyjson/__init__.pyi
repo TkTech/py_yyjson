@@ -1,4 +1,5 @@
 import enum
+from pathlib import Path
 from typing import Any, Optional, List, Dict, Union
 
 class ReaderFlags(enum.IntFlag):
@@ -15,7 +16,7 @@ class WriterFlags(enum.IntFlag):
     ALLOW_INF_AND_NAN = 0x08
     INF_AND_NAN_AS_NULL = 0x10
 
-Content = Union[str, bytes, List, Dict]
+Content = Union[str, bytes, List, Dict, Path]
 
 class Document:
     as_obj: Any
