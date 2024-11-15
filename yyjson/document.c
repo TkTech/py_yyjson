@@ -1,6 +1,7 @@
 #include "document.h"
 
 #include "memory.h"
+#include "decimal.h"
 
 #define ENSURE_MUTABLE(self)                                   \
   if (self->i_doc) {                                           \
@@ -9,8 +10,8 @@
     self->i_doc = NULL;                                        \
   }
 
-static inline PyObject *mut_element_to_primitive(yyjson_mut_val *val);
-static inline PyObject *element_to_primitive(yyjson_val *val);
+static PyObject *mut_element_to_primitive(yyjson_mut_val *val);
+static PyObject *element_to_primitive(yyjson_val *val);
 
 static PyObject *pathlib = NULL;
 static PyObject *path = NULL;
@@ -58,7 +59,7 @@ static inline PyObject *unicode_from_str(const char *src, size_t len) {
  * Recursively convert the given value into an equivalent high-level Python
  * object.
  **/
-static inline PyObject *element_to_primitive(yyjson_val *val) {
+static PyObject *element_to_primitive(yyjson_val *val) {
   yyjson_type type = yyjson_get_type(val);
 
   switch (type) {
@@ -150,8 +151,14 @@ static inline PyObject *element_to_primitive(yyjson_val *val) {
       }
       return dict;
     }
-    case YYJSON_TYPE_RAW:
-      return PyLong_FromString(yyjson_get_raw(val), NULL, 10);
+    case YYJSON_TYPE_RAW: {
+      size_t str_len = yyjson_get_len(val);
+      const char *str = yyjson_get_raw(val);
+      PyObject *uni = unicode_from_str(str, str_len);
+      PyObject *result = PyObject_CallOneArg(YY_DecimalClass, uni);
+      Py_DECREF(uni);
+      return result;
+    }
     case YYJSON_TYPE_NONE:
     default:
       PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
@@ -163,7 +170,7 @@ static inline PyObject *element_to_primitive(yyjson_val *val) {
  * Recursively convert the given value into an equivalent high-level Python
  * object.
  **/
-static inline PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
+static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
   yyjson_type type = yyjson_mut_get_type(val);
 
   switch (type) {
@@ -251,8 +258,14 @@ static inline PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
       }
       return dict;
     }
-    case YYJSON_TYPE_RAW:
-      return PyLong_FromString(yyjson_mut_get_raw(val), NULL, 10);
+    case YYJSON_TYPE_RAW: {
+      size_t str_len = yyjson_mut_get_len(val);
+      const char *str = yyjson_mut_get_raw(val);
+      PyObject *uni = unicode_from_str(str, str_len);
+      PyObject *result = PyObject_CallOneArg(YY_DecimalClass, uni);
+      Py_DECREF(uni);
+      return result;
+    }
     case YYJSON_TYPE_NONE:
     default:
       PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
@@ -370,6 +383,13 @@ static inline yyjson_mut_val *mut_primitive_to_element(
     return yyjson_mut_false(doc);
   } else if (obj == Py_None) {
     return yyjson_mut_null(doc);
+  } else if (yyjson_unlikely(PyObject_IsInstance(obj, YY_DecimalClass))) {
+    PyObject *str_repr = PyObject_Str(obj);
+    Py_ssize_t str_len;
+    const char *str = PyUnicode_AsUTF8AndSize(str_repr, &str_len);
+    yyjson_mut_val *val = yyjson_mut_rawncpy(doc, str, str_len);
+    Py_DECREF(str_repr);
+    return val;
   } else {
     PyErr_Format(PyExc_TypeError,
       "Object of type '%s' is not JSON serializable",
@@ -456,12 +476,12 @@ static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
     return -1;
   }
 
-  if (default_func && !PyCallable_Check(default_func)) {
+  if (default_func && default_func != Py_None && !PyCallable_Check(default_func)) {
     PyErr_SetString(PyExc_TypeError, "default must be callable");
     return -1;
   }
 
-  self->default_func = default_func;
+  self->default_func = default_func == Py_None ? NULL : default_func;
   Py_XINCREF(default_func);
 
   if (yyjson_unlikely(pathlib == NULL)) {

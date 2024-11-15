@@ -11,7 +11,7 @@ with open(os.path.join(root, "README.md"), "rb") as readme:
 setup(
     name="yyjson",
     packages=find_packages(),
-    version="3.1.0",
+    version="4.0.0",
     description="yyjson bindings for python",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -22,11 +22,17 @@ setup(
     zip_safe=False,
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
     ],
+    license="MIT",
     python_requires=">=3.8",
     extras_require={
         # Dependencies for running tests.
@@ -38,7 +44,7 @@ setup(
             "ghp-import",
             "bumpversion",
             "black",
-            "furo"
+            "furo",
         ],
     },
     ext_modules=[
