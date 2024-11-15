@@ -26,6 +26,8 @@ class ReaderFlags(enum.IntFlag):
     #: Read number as raw string. inf/nan
     #: literal is also read as raw with `ALLOW_INF_AND_NAN` flag.
     NUMBERS_AS_RAW = 0x20
+    #: Read only large numbers as raw string.
+    BIGNUM_AS_RAW = 0x80
 
 
 class WriterFlags(enum.IntFlag):
