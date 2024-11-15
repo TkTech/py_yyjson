@@ -23,11 +23,17 @@ class ReaderFlags(enum.IntFlag):
     #: Allow inf/nan number and literal, case-insensitive, such as 1e999, NaN,
     #: inf, -Infinity
     ALLOW_INF_AND_NAN = 0x10
-    #: Read number as raw string. inf/nan
-    #: literal is also read as raw with `ALLOW_INF_AND_NAN` flag.
+    #: Alias for `NUMBERS_AS_DECIMAL`.
     NUMBERS_AS_RAW = 0x20
-    #: Read only large numbers as raw string.
+    #: Read all numbers as Decimal objects instead of native types. This option
+    #: is useful for preserving the exact precision of numbers or for handling
+    #: numbers that are too large to fit in a native type.
+    NUMBERS_AS_DECIMAL = 0x20
+    #: Alias for `BIG_NUMBERS_AS_DECIMAL`.
     BIGNUM_AS_RAW = 0x80
+    #: Like `NUMBERS_AS_DECIMAL`, but only for numbers that are too large to
+    #: fit in a native type.
+    BIG_NUMBERS_AS_DECIMAL = 0x80
 
 
 class WriterFlags(enum.IntFlag):
@@ -43,72 +49,27 @@ class WriterFlags(enum.IntFlag):
     PRETTY_TWO_SPACES = 0x40
     #: Escapes unicode as \uXXXXX so that all output is ASCII.
     ESCAPE_UNICODE = 0x02
-    #: Escapes / as \/.
+    #: Escapes / as \\/.
     ESCAPE_SLASHES = 0x04
     #: Writes Infinity and NaN.
     ALLOW_INF_AND_NAN = 0x08
     #: Writes Infinity and NaN as `null` instead of raising an error.
     INF_AND_NAN_AS_NULL = 0x10
+    #: Write a newline at the end of the JSON string.
+    WRITE_NEWLINE_AT_END = 0x80
 
 
-def load(
-    fp,
-    *,
-    cls=None,
-    object_hook=None,
-    parse_float=None,
-    parse_int=None,
-    parse_constant=None,
-    object_pairs_hook=None,
-    **kw
-):
+def load(fp):
     return Document(fp.read()).as_obj
 
 
-def loads(
-    s,
-    *,
-    cls=None,
-    object_hook=None,
-    parse_float=None,
-    parse_int=None,
-    parse_constant=None,
-    object_pairs_hook=None,
-    **kw
-):
+def loads(s):
     return Document(s).as_obj
 
 
-def dumps(
-    obj,
-    *,
-    skipkeys=False,
-    ensure_ascii=True,
-    check_circular=True,
-    allow_nan=True,
-    cls=None,
-    indent=None,
-    separators=None,
-    default=None,
-    sort_keys=False,
-    **kw
-):
-    return Document(obj).dumps()
+def dumps(obj, *, default=None):
+    return Document(obj, default=default).dumps()
 
 
-def dump(
-    obj,
-    fp,
-    *,
-    skipkeys=False,
-    ensure_ascii=True,
-    check_circular=True,
-    allow_nan=True,
-    cls=None,
-    indent=None,
-    separators=None,
-    default=None,
-    sort_keys=False,
-    **kw
-):
-    fp.write(Document(obj).dumps())
+def dump(obj, fp, *, default=None):
+    fp.write(Document(obj, default=default).dumps())

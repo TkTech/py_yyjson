@@ -3,6 +3,8 @@
 
 # py_yyjson
 
+![py_yyjson Logo](misc/logo_small.png)
+
 Fast, flexible Python bindings for the excellent [yyjson][] project.
 
 ## Documentation

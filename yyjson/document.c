@@ -476,12 +476,12 @@ static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
     return -1;
   }
 
-  if (default_func && !PyCallable_Check(default_func)) {
+  if (default_func && default_func != Py_None && !PyCallable_Check(default_func)) {
     PyErr_SetString(PyExc_TypeError, "default must be callable");
     return -1;
   }
 
-  self->default_func = default_func;
+  self->default_func = default_func == Py_None ? NULL : default_func;
   Py_XINCREF(default_func);
 
   if (yyjson_unlikely(pathlib == NULL)) {

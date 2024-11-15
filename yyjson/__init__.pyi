@@ -8,6 +8,9 @@ class ReaderFlags(enum.IntFlag):
     ALLOW_COMMENTS = 0x08
     ALLOW_INF_AND_NAN = 0x10
     NUMBERS_AS_RAW = 0x20
+    NUMBERS_AS_DECIMAL = 0x20
+    BIGNUM_AS_RAW = 0x80
+    BIG_NUMBERS_AS_DECIMAL = 0x80
 
 class WriterFlags(enum.IntFlag):
     PRETTY = 0x01
@@ -15,6 +18,7 @@ class WriterFlags(enum.IntFlag):
     ESCAPE_SLASHES = 0x04
     ALLOW_INF_AND_NAN = 0x08
     INF_AND_NAN_AS_NULL = 0x10
+    WRITE_NEWLINE_AT_END = 0x80
 
 Content = Union[str, bytes, List, Dict, Path]
 
