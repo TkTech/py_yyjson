@@ -1,3 +1,7 @@
 include yyjson/binding.c
 include yyjson/yyjson.h
 include yyjson/yyjson.c
+include yyjson/memory.c
+include yyjson/memory.h
+include yyjson/document.c
+include yyjson/document.h

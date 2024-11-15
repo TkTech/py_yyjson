@@ -296,9 +296,21 @@ PyTypeObject *type_for_conversion(PyObject *obj) {
  * Recursively convert a Python object into yyjson elements.
  */
 static inline yyjson_mut_val *mut_primitive_to_element(
-    yyjson_mut_doc *doc, PyObject *obj
+    DocumentObject *self,
+    yyjson_mut_doc *doc,
+    PyObject *obj
 ) {
   const PyTypeObject *ob_type = type_for_conversion(obj);
+
+  if (yyjson_unlikely(ob_type == NULL) && self->default_func != NULL) {
+    PyObject *result = PyObject_CallFunctionObjArgs(self->default_func, obj, NULL);
+    if (result == NULL) {
+      return NULL;
+    }
+    yyjson_mut_val *val = mut_primitive_to_element(self, doc, result);
+    Py_DECREF(result);
+    return val;
+  }
 
   if (ob_type == &PyUnicode_Type) {
     Py_ssize_t str_len;
@@ -334,7 +346,7 @@ static inline yyjson_mut_val *mut_primitive_to_element(
     yyjson_mut_val *val = yyjson_mut_arr(doc);
     yyjson_mut_val *object_value = NULL;
     for (Py_ssize_t i = 0; i < PyList_GET_SIZE(obj); i++) {
-      object_value = mut_primitive_to_element(doc, PyList_GET_ITEM(obj, i));
+      object_value = mut_primitive_to_element(self, doc, PyList_GET_ITEM(obj, i));
 
       if (yyjson_unlikely(object_value == NULL)) {
         return NULL;
@@ -352,7 +364,7 @@ static inline yyjson_mut_val *mut_primitive_to_element(
     while (PyDict_Next(obj, &i, &key, &value)) {
       Py_ssize_t str_len;
       const char *str = PyUnicode_AsUTF8AndSize(key, &str_len);
-      object_value = mut_primitive_to_element(doc, value);
+      object_value = mut_primitive_to_element(self, doc, value);
       if (yyjson_unlikely(object_value == NULL)) {
         return NULL;
       }
@@ -379,11 +391,9 @@ static inline yyjson_mut_val *mut_primitive_to_element(
     Py_DECREF(str_repr);
     return val;
   } else {
-    PyErr_SetString(
-        PyExc_TypeError,
-        // TODO: We can provide a much better error here. Also add support
-        // for a default hook.
-        "Tried to serialize an object we don't know how to handle."
+    PyErr_Format(PyExc_TypeError,
+      "Object of type '%s' is not JSON serializable",
+      Py_TYPE(obj)->tp_name
     );
     return NULL;
   }
@@ -392,6 +402,7 @@ static inline yyjson_mut_val *mut_primitive_to_element(
 static void Document_dealloc(DocumentObject *self) {
   if (self->i_doc != NULL) yyjson_doc_free(self->i_doc);
   if (self->m_doc != NULL) yyjson_mut_doc_free(self->m_doc);
+  Py_XDECREF(self->default_func);
   Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -446,19 +457,32 @@ PyDoc_STRVAR(
     ":param content: The initial content of the document.\n"
     ":type content: ``str``, ``bytes``, ``Path``, ``dict``, ``list``\n"
     ":param flags: Flags that modify the document parsing behaviour.\n"
-    ":type flags: :class:`ReaderFlags`, optional"
+    ":type flags: :class:`ReaderFlags`, optional\n"
+    ":param default: A function called to convert objects that are not\n"
+    "                JSON serializable. Should return a JSON serializable version\n"
+    "                of the object or raise a TypeError.\n"
+    ":type default: callable, optional"
 );
 static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
-  static char *kwlist[] = {"content", "flags", NULL};
+  static char *kwlist[] = {"content", "flags", "default", NULL};
   PyObject *content;
+  PyObject *default_func = NULL;
   yyjson_read_err err;
   yyjson_read_flag r_flag = 0;
 
   if (!PyArg_ParseTupleAndKeywords(
-          args, kwds, "O|$I", kwlist, &content, &r_flag
+          args, kwds, "O|$IO", kwlist, &content, &r_flag, &default_func
       )) {
     return -1;
   }
+
+  if (default_func && !PyCallable_Check(default_func)) {
+    PyErr_SetString(PyExc_TypeError, "default must be callable");
+    return -1;
+  }
+
+  self->default_func = default_func;
+  Py_XINCREF(default_func);
 
   if (yyjson_unlikely(pathlib == NULL)) {
     pathlib = PyImport_ImportModule("pathlib");
@@ -543,7 +567,7 @@ static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
       return -1;
     }
 
-    yyjson_mut_val *val = mut_primitive_to_element(self->m_doc, content);
+    yyjson_mut_val *val = mut_primitive_to_element(self, self->m_doc, content);
 
     if (val == NULL) {
       return -1;

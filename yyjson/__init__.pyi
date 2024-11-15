@@ -1,5 +1,6 @@
 import enum
-from typing import Any, Optional, List, Dict, Union
+from pathlib import Path
+from typing import Any, Optional, List, Dict, Union, Callable
 
 class ReaderFlags(enum.IntFlag):
     STOP_WHEN_DONE = 0x02
@@ -15,15 +16,22 @@ class WriterFlags(enum.IntFlag):
     ALLOW_INF_AND_NAN = 0x08
     INF_AND_NAN_AS_NULL = 0x10
 
-Content = Union[str, bytes, List, Dict]
+Content = Union[str, bytes, List, Dict, Path]
 
 class Document:
     as_obj: Any
-    def __init__(self, content: Content, flags: Optional[ReaderFlags] = ...): ...
+    def __init__(
+        self,
+        content: Content,
+        flags: Optional[ReaderFlags] = ...,
+        default: Callable[[Any], Any] = ...,
+    ): ...
     def __len__(self) -> int: ...
     def get_pointer(self, pointer: str) -> Any: ...
     def dumps(
-        self, flags: Optional[WriterFlags] = ..., at_pointer: Optional[str] = ...
+        self,
+        flags: Optional[WriterFlags] = ...,
+        at_pointer: Optional[str] = ...,
     ) -> str: ...
     def patch(
         self,

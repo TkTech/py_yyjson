@@ -11,7 +11,7 @@ with open(os.path.join(root, "README.md"), "rb") as readme:
 setup(
     name="yyjson",
     packages=find_packages(),
-    version="2.3.1",
+    version="3.1.0",
     description="yyjson bindings for python",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -27,7 +27,7 @@ setup(
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
     ],
-    python_requires=">3.4",
+    python_requires=">=3.8",
     extras_require={
         # Dependencies for running tests.
         "test": ["pytest"],

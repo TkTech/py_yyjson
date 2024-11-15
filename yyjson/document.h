@@ -17,6 +17,8 @@ typedef struct {
   yyjson_doc* i_doc;
   /** The memory allocator in use for this document. */
   yyjson_alc* alc;
+  /** default callback for serializing unknown types. */
+  PyObject* default_func;
 } DocumentObject;
 
 extern PyTypeObject DocumentType;
