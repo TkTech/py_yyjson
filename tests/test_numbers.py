@@ -10,8 +10,6 @@ def test_big_numbers():
     The test set is from:
         https://blog.trl.sn/blog/what-is-a-json-number/#python-3-8-1
     """
-    sys.set_int_max_str_digits(10000)
-
     test_numbers = [
         "10",
         "1000000000",
@@ -27,7 +25,7 @@ def test_big_numbers():
 
     for num in test_numbers:
         deserialized = Document(num, flags=ReaderFlags.NUMBERS_AS_RAW)
- 
+
         obj = deserialized.as_obj
 
         assert str(obj) == num
