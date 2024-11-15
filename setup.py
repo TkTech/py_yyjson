@@ -11,7 +11,7 @@ with open(os.path.join(root, "README.md"), "rb") as readme:
 setup(
     name="yyjson",
     packages=find_packages(),
-    version="4.0.3",
+    version="4.0.4",
     description="yyjson bindings for python",
     long_description=long_description,
     long_description_content_type="text/markdown",
