@@ -7,8 +7,7 @@
   api.rst
   development.rst
 
-Python bindings to the fantastic `yyjson`_ project. This module provides a fast,
-flexible, portable, and correct JSON parser and serializer.
+Fast and flexible Python JSON parsing built on the excellent `yyjson`_ library.
 
 .. image:: https://img.shields.io/github/sponsors/tktech
    :alt: GitHub Sponsors
@@ -78,8 +77,7 @@ Parse a JSON document from a file:
 
     >>> from pathlib import Path
     >>> from yyjson import Document
-    >>> doc = Document(Path("canada.json")).as_obj
-    >>> doc
+    >>> Document(Path("canada.json")).as_obj
     {'type': 'FeatureCollection', 'features': [...], 'bbox': [...], 'crs': {...}}
 
 
@@ -88,8 +86,7 @@ Parse a JSON document from a string:
 .. code-block:: python
 
     >>> from yyjson import Document
-    >>> doc = Document('{"hello": "world"}').as_obj
-    >>> doc
+    >>> Document('{"hello": "world"}').as_obj
     {'hello': 'world'}
 
 Parse a JSON document from a bytes object:
@@ -97,8 +94,7 @@ Parse a JSON document from a bytes object:
 .. code-block:: python
 
     >>> from yyjson import Document
-    >>> doc = Document(b'{"hello": "world"}').as_obj
-    >>> doc
+    >>> Document(b'{"hello": "world"}').as_obj
     {'hello': 'world'}
 
 
