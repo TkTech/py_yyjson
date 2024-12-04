@@ -5,3 +5,4 @@ include yyjson/memory.c
 include yyjson/memory.h
 include yyjson/document.c
 include yyjson/document.h
+include yyjson/decimal.h
