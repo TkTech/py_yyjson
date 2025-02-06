@@ -73,7 +73,7 @@ jobs:
           CIBW_BUILD: "${{ matrix.py }}-*"
           CIBW_TEST_SKIP: "*_arm64 *_universal2:arm64"
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4.6.0
         with:
           path: ./wheelhouse/*.whl
 
