@@ -17,7 +17,7 @@ jobs:
       - name: Setting up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.9
+          python-version: 3.13
 
       - name: Installing python build dependencies
         run: |
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/setup-python@v5
         name: Setting up Python
         with:
-          python-version: '3.9'
+          python-version: '3.13'
 
       - name: Set up QEMU
         if: runner.os == 'Linux'
@@ -67,7 +67,7 @@ jobs:
           platforms: all
 
       - name: Build & test wheels
-        uses: pypa/cibuildwheel@v2.21.3
+        uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_ARCHS_LINUX: auto aarch64 ppc64le s390x
           CIBW_ARCHS_MACOS: x86_64 arm64 universal2
@@ -104,7 +104,7 @@ jobs:
       - name: Setting up Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.9
+          python-version: 3.13
 
       - name: Installing python build dependencies
         run: |
