@@ -27,7 +27,7 @@ jobs:
       - name: Building source distribution
         run: |
           pip install -e ".[test,release]"
-          python setup.py sdist
+          python -m build . --sdist
 
       - name: Running tests
         run: |
@@ -37,8 +37,9 @@ jobs:
         run: |
           cd docs && make clean && make html
 
-      - uses: actions/upload-artifact@v4.4.3
+      - uses: actions/upload-artifact@v4.6.0
         with:
+          name: dist-sdist
           path: dist/*.tar.gz
 
   build_wheels:
@@ -75,6 +76,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4.6.0
         with:
+          name: dist-${{ matrix.os }}-${{ matrix.py }}
           path: ./wheelhouse/*.whl
 
   upload_all:
@@ -84,9 +86,9 @@ jobs:
     steps:
     - uses: actions/download-artifact@v4.1.8
       with:
-        name: artifact
+        pattern: dist-*
+        merge-multiple: true
         path: dist
-
     - uses: pypa/gh-action-pypi-publish@v1.4.2
       with:
         user: ${{ secrets.PYPI_USERNAME }}

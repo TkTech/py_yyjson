@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=74.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yyjson"
+version = "4.0.6"
+description = "JSON parser & serializer built on yyjson"
+readme = "README.md"
+authors = [
+    {name = "Tyler Kennedy", email = "tk@tkte.ch" }
+]
+license = { file= "LICENSE" }
+keywords = ["json", "parser", "serializer", "patcher"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup :: JSON",
+]
+
+[project.urls]
+Homepage = "https://github.com/tktech/py_yyjson"
+Repository = "https://github.com/tktech/py_yyjson.git"
+
+[project.optional-dependencies]
+test = ["pytest"]
+release = [
+    "sphinx",
+    "sphinx-copybutton",
+    "ghp-import",
+    "bumpversion",
+    "black",
+    "furo"
+]
+
+[tool.setuptools]
+ext-modules = [
+    { name = "cyyjson", sources = ["yyjson/binding.c", "yyjson/yyjson.c", "yyjson/memory.c", "yyjson/document.c"], py-limited-api = true}
+]
+packages = ["yyjson"]
+
