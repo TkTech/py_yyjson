@@ -26,7 +26,6 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
     "Operating System :: OS Independent",
     "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Text Processing :: Markup :: JSON",
 ]
 
 [project.urls]
