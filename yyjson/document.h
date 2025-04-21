@@ -11,8 +11,10 @@
  */
 typedef struct {
   PyObject_HEAD
-      /** A mutable document. */
-      yyjson_mut_doc* m_doc;
+  /** numbers and bignums as decimal? */
+  bool raw_as_decimal;
+  /** A mutable document. */
+  yyjson_mut_doc* m_doc;
   /** An immutable document. */
   yyjson_doc* i_doc;
   /** The memory allocator in use for this document. */

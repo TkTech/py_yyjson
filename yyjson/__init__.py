@@ -4,6 +4,7 @@ import enum
 
 from cyyjson import Document
 
+READER_RAW_AS_DECIMAL = 0x100
 
 class ReaderFlags(enum.IntFlag):
     """
@@ -23,17 +24,17 @@ class ReaderFlags(enum.IntFlag):
     #: Allow inf/nan number and literal, case-insensitive, such as 1e999, NaN,
     #: inf, -Infinity
     ALLOW_INF_AND_NAN = 0x10
-    #: Alias for `NUMBERS_AS_DECIMAL`.
+    #: Read all numbers as Python long integers.
     NUMBERS_AS_RAW = 0x20
     #: Read all numbers as Decimal objects instead of native types. This option
     #: is useful for preserving the exact precision of numbers or for handling
     #: numbers that are too large to fit in a native type.
-    NUMBERS_AS_DECIMAL = 0x20
-    #: Alias for `BIG_NUMBERS_AS_DECIMAL`.
+    NUMBERS_AS_DECIMAL = 0x20 | READER_RAW_AS_DECIMAL
+    #: Read big numbers as Python long integers.
     BIGNUM_AS_RAW = 0x80
     #: Like `NUMBERS_AS_DECIMAL`, but only for numbers that are too large to
     #: fit in a native type.
-    BIG_NUMBERS_AS_DECIMAL = 0x80
+    BIG_NUMBERS_AS_DECIMAL = 0x80 | READER_RAW_AS_DECIMAL
 
 
 class WriterFlags(enum.IntFlag):

@@ -10,8 +10,8 @@
     self->i_doc = NULL;                                        \
   }
 
-static PyObject *mut_element_to_primitive(yyjson_mut_val *val);
-static PyObject *element_to_primitive(yyjson_val *val);
+static PyObject *mut_element_to_primitive(yyjson_mut_val *val, bool raw_as_decimal);
+static PyObject *element_to_primitive(yyjson_val *val, bool raw_as_decimal);
 
 static PyObject *pathlib = NULL;
 static PyObject *path = NULL;
@@ -55,11 +55,28 @@ static inline PyObject *unicode_from_str(const char *src, size_t len) {
   return PyUnicode_DecodeUTF8(src, len, NULL);
 }
 
+static bool is_float(const char * str, size_t str_len) {
+  size_t ii = 0;
+
+  for (ii = 0; ii < str_len; ii++) {
+    switch (str[ii]) {
+      case 'e':
+      case 'E':
+      case 'n':
+      case 'N':
+      case '.':
+        return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Recursively convert the given value into an equivalent high-level Python
  * object.
  **/
-static PyObject *element_to_primitive(yyjson_val *val) {
+static PyObject *element_to_primitive(yyjson_val *val, bool raw_as_decimal) {
   yyjson_type type = yyjson_get_type(val);
 
   switch (type) {
@@ -100,7 +117,7 @@ static PyObject *element_to_primitive(yyjson_val *val) {
 
       size_t idx = 0;
       while ((obj_val = yyjson_arr_iter_next(&iter))) {
-        py_val = element_to_primitive(obj_val);
+        py_val = element_to_primitive(obj_val, raw_as_decimal);
         if (!py_val) {
           return NULL;
         }
@@ -131,7 +148,7 @@ static PyObject *element_to_primitive(yyjson_val *val) {
         str = yyjson_get_str(obj_key);
 
         py_key = unicode_from_str(str, str_len);
-        py_val = element_to_primitive(obj_val);
+        py_val = element_to_primitive(obj_val, raw_as_decimal);
 
         if (!py_key) {
           return NULL;
@@ -152,12 +169,28 @@ static PyObject *element_to_primitive(yyjson_val *val) {
       return dict;
     }
     case YYJSON_TYPE_RAW: {
-      size_t str_len = yyjson_get_len(val);
-      const char *str = yyjson_get_raw(val);
-      PyObject *uni = unicode_from_str(str, str_len);
-      PyObject *result = PyObject_CallOneArg(YY_DecimalClass, uni);
-      Py_DECREF(uni);
-      return result;
+      if (raw_as_decimal) {
+        size_t str_len = yyjson_get_len(val);
+        const char *str = yyjson_get_raw(val);
+        PyObject *uni = unicode_from_str(str, str_len);
+        PyObject *result = PyObject_CallOneArg(YY_DecimalClass, uni);
+        Py_DECREF(uni);
+        return result;
+
+      } else {
+        size_t str_len = yyjson_get_len(val);
+        const char * str = yyjson_get_raw(val);
+
+        if (is_float(str, str_len)) {
+          PyObject *uni = unicode_from_str(str, str_len);
+          PyObject *result = PyFloat_FromString(uni);
+          Py_DECREF(uni);
+          return result;
+        } else {
+          return PyLong_FromString(str, NULL, 10);
+        }
+
+      }
     }
     case YYJSON_TYPE_NONE:
     default:
@@ -170,7 +203,7 @@ static PyObject *element_to_primitive(yyjson_val *val) {
  * Recursively convert the given value into an equivalent high-level Python
  * object.
  **/
-static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
+static PyObject *mut_element_to_primitive(yyjson_mut_val *val, bool raw_as_decimal) {
   yyjson_type type = yyjson_mut_get_type(val);
 
   switch (type) {
@@ -212,7 +245,7 @@ static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
 
       size_t idx = 0;
       while ((obj_val = yyjson_mut_arr_iter_next(&iter))) {
-        py_val = mut_element_to_primitive(obj_val);
+        py_val = mut_element_to_primitive(obj_val, raw_as_decimal);
         if (!py_val) {
           return NULL;
         }
@@ -237,8 +270,8 @@ static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
       while ((obj_key = yyjson_mut_obj_iter_next(&iter))) {
         obj_val = yyjson_mut_obj_iter_get_val(obj_key);
 
-        py_key = mut_element_to_primitive(obj_key);
-        py_val = mut_element_to_primitive(obj_val);
+        py_key = mut_element_to_primitive(obj_key, raw_as_decimal);
+        py_val = mut_element_to_primitive(obj_val, raw_as_decimal);
 
         if (!py_key) {
           return NULL;
@@ -259,12 +292,28 @@ static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
       return dict;
     }
     case YYJSON_TYPE_RAW: {
-      size_t str_len = yyjson_mut_get_len(val);
-      const char *str = yyjson_mut_get_raw(val);
-      PyObject *uni = unicode_from_str(str, str_len);
-      PyObject *result = PyObject_CallOneArg(YY_DecimalClass, uni);
-      Py_DECREF(uni);
-      return result;
+      if (raw_as_decimal) {
+        size_t str_len = yyjson_mut_get_len(val);
+        const char *str = yyjson_mut_get_raw(val);
+        PyObject *uni = unicode_from_str(str, str_len);
+        PyObject *result = PyObject_CallOneArg(YY_DecimalClass, uni);
+        Py_DECREF(uni);
+        return result;
+
+      } else {
+        size_t str_len = yyjson_mut_get_len(val);
+        const char * str = yyjson_mut_get_raw(val);
+
+        if (is_float(str, str_len)) {
+          PyObject *uni = unicode_from_str(str, str_len);
+          PyObject *result = PyFloat_FromString(uni);
+          Py_DECREF(uni);
+          return result;
+        } else {
+          return PyLong_FromString(str, NULL, 10);
+        }
+
+      }
     }
     case YYJSON_TYPE_NONE:
     default:
@@ -476,6 +525,10 @@ static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
     return -1;
   }
 
+#define READER_RAW_AS_DECIMAL 0x100
+  self->raw_as_decimal = (r_flag & READER_RAW_AS_DECIMAL) != 0;
+  r_flag = r_flag ^ READER_RAW_AS_DECIMAL;
+
   if (default_func && default_func != Py_None && !PyCallable_Check(default_func)) {
     PyErr_SetString(PyExc_TypeError, "default must be callable");
     return -1;
@@ -584,9 +637,9 @@ static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
  */
 static PyObject *Document_as_obj(DocumentObject *self, void *closure) {
   if (self->i_doc) {
-    return element_to_primitive(yyjson_doc_get_root(self->i_doc));
+    return element_to_primitive(yyjson_doc_get_root(self->i_doc), self->raw_as_decimal);
   } else {
-    return mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc));
+    return mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc), self->raw_as_decimal);
   }
 }
 
@@ -724,7 +777,7 @@ static PyObject *Document_get_pointer(DocumentObject *self, PyObject *args) {
       return NULL;
     }
 
-    return element_to_primitive(result);
+    return element_to_primitive(result, self->raw_as_decimal);
   } else {
     yyjson_mut_val *result =
         yyjson_mut_doc_ptr_getx(self->m_doc, pointer, pointer_len, NULL, &err);
@@ -736,7 +789,7 @@ static PyObject *Document_get_pointer(DocumentObject *self, PyObject *args) {
       return NULL;
     }
 
-    return mut_element_to_primitive(result);
+    return mut_element_to_primitive(result, self->raw_as_decimal);
   }
 }
 
