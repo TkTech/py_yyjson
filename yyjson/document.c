@@ -621,7 +621,7 @@ static PyObject *Document_is_thawed(DocumentObject *self, void *closure) {
 /**
  * Get the size of data read from the original JSON input.
  */
-static PyObject *Document_size(DocumentObject *self, void *closure) {
+static PyObject *Document_bytes_read(DocumentObject *self, void *closure) {
   if (self->i_doc) {
     return PyLong_FromSize_t(yyjson_doc_get_read_size(self->i_doc));
   } else {
@@ -1041,7 +1041,7 @@ static PyGetSetDef Document_members[] = {
      NULL},
     {"is_thawed", (getter)Document_is_thawed, NULL,
      "Returns whether the Document is thawed/mutable.", NULL},
-    {"size", (getter)Document_size, NULL,
+    {"bytes_read", (getter)Document_bytes_read, NULL,
      "Returns the size of data read from the original JSON input.", NULL},
     {NULL} /* Sentinel */
 };

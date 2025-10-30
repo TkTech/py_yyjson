@@ -203,11 +203,11 @@ def test_document_dict_type():
     assert doc.as_obj == {'a': 'b'}
 
     with pytest.raises(TypeError) as exc:
-        doc = Document({1: 'b'})
+        Document({1: 'b'})
     assert exc.value.args[0] == 'Dictionary keys must be strings'
 
     with pytest.raises(TypeError) as exc:
-        doc = Document({'\ud83d\ude47': 'foo'})
+        Document({'\ud83d\ude47': 'foo'})
     assert exc.value.args[0] == 'Dictionary keys must be strings'
 
 
@@ -294,17 +294,17 @@ def test_document_size():
     # Test with immutable document (created from JSON string)
     json_str = '{"hello": "world", "number": 42}'
     doc = Document(json_str)
-    assert doc.size == len(json_str)
+    assert doc.bytes_read == len(json_str)
 
     # Test with different sized JSON inputs
     small_json = "{}"
     doc_small = Document(small_json)
-    assert doc_small.size == len(small_json)
+    assert doc_small.bytes_read == len(small_json)
 
     large_json = '{"users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}], "count": 2}'
     doc_large = Document(large_json)
-    assert doc_large.size == len(large_json)
+    assert doc_large.bytes_read == len(large_json)
 
     # Test with mutable document (created from Python object) - should return 0
     doc_mutable = Document({"hello": "world"})
-    assert doc_mutable.size == 0
+    assert doc_mutable.bytes_read == 0
