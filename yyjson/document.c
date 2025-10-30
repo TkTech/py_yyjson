@@ -618,6 +618,17 @@ static PyObject *Document_is_thawed(DocumentObject *self, void *closure) {
   return PyBool_FromLong(self->m_doc != NULL);
 }
 
+/**
+ * Get the size of data read from the original JSON input.
+ */
+static PyObject *Document_size(DocumentObject *self, void *closure) {
+  if (self->i_doc) {
+    return PyLong_FromSize_t(yyjson_doc_get_read_size(self->i_doc));
+  } else {
+    return PyLong_FromLong(0);
+  }
+}
+
 PyDoc_STRVAR(
     Document_dumps_doc,
     "Dumps the document to a string and returns it.\n"
@@ -1030,6 +1041,8 @@ static PyGetSetDef Document_members[] = {
      NULL},
     {"is_thawed", (getter)Document_is_thawed, NULL,
      "Returns whether the Document is thawed/mutable.", NULL},
+    {"size", (getter)Document_size, NULL,
+     "Returns the size of data read from the original JSON input.", NULL},
     {NULL} /* Sentinel */
 };
 

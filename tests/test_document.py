@@ -285,3 +285,26 @@ def test_document_freeze():
 
     doc.freeze()
     assert doc.is_thawed is False
+
+
+def test_document_size():
+    """
+    Test the size attribute that returns the size of data read from original JSON input.
+    """
+    # Test with immutable document (created from JSON string)
+    json_str = '{"hello": "world", "number": 42}'
+    doc = Document(json_str)
+    assert doc.size == len(json_str)
+
+    # Test with different sized JSON inputs
+    small_json = "{}"
+    doc_small = Document(small_json)
+    assert doc_small.size == len(small_json)
+
+    large_json = '{"users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}], "count": 2}'
+    doc_large = Document(large_json)
+    assert doc_large.size == len(large_json)
+
+    # Test with mutable document (created from Python object) - should return 0
+    doc_mutable = Document({"hello": "world"})
+    assert doc_mutable.size == 0
