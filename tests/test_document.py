@@ -25,6 +25,61 @@ def test_document_from_str():
     assert doc.as_obj == {"hello": "world"}
 
 
+def test_document_unicode():
+    value = '["bar�"]'
+    doc = Document(value)
+    assert doc.dumps() == value
+    assert doc.as_obj == ['bar�']
+
+    value = '["bar\uFFFD"]'
+    doc = Document(value)
+    assert doc.dumps() == value
+    assert doc.as_obj == ['bar�']
+
+    assert doc.dumps(flags=WriterFlags.ESCAPE_UNICODE) == '["bar\\uFFFD"]'
+
+def test_document_unicode_stdlib():
+
+    # Adapted tests from cpython lib/tests/test_json/test_unicode.py
+
+    # test_encoding3
+    value = '"\N{GREEK SMALL LETTER ALPHA}\N{GREEK CAPITAL LETTER OMEGA}"'
+    doc = Document(value)
+    assert doc.dumps() == value
+    assert doc.dumps(flags=WriterFlags.ESCAPE_UNICODE) == '"\\u03B1\\u03A9"'
+    assert doc.as_obj == '\u03b1\u03a9'
+
+    # test_encoding4
+    value = '\N{GREEK SMALL LETTER ALPHA}\N{GREEK CAPITAL LETTER OMEGA}'
+    doc = Document([value])
+    assert doc.dumps() == f'["{value}"]'
+    assert doc.dumps(flags=WriterFlags.ESCAPE_UNICODE) == '["\\u03B1\\u03A9"]'
+    assert doc.as_obj == ['\u03b1\u03a9']
+
+    # test_big_unicode_encode
+    value = '"\U0001d120"'
+    doc = Document(value)
+    assert doc.dumps() == value
+    assert doc.dumps(flags=WriterFlags.ESCAPE_UNICODE) == '"\\uD834\\uDD20"'
+    assert doc.as_obj == '𝄠'
+
+    # test_big_unicode_decode
+    value = '"z\U0001d120x"'
+    doc = Document(value)
+    assert doc.dumps() == value
+    assert doc.dumps(flags=WriterFlags.ESCAPE_UNICODE) == '"z\\uD834\\uDD20x"'
+    assert doc.as_obj == 'z𝄠x'
+
+    def loads(s: str, reader_flags=0):
+        '''Load a string as json.'''
+        return Document(s, flags=reader_flags).as_obj
+
+    # test_unicode_decode
+    for i in range(0, 0xd7ff):
+        u = chr(i)
+        value = '"\\u{0:04x}"'.format(i)
+        assert loads(value) == u
+
 def test_document_types():
     """Ensure each primitive type can be upcast (which does not have its own
     dedicated test.)"""

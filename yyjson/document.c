@@ -22,7 +22,7 @@ static PyObject *path = NULL;
 static inline size_t num_utf8_chars(const char *src, size_t len) {
   size_t count = 0;
   for (size_t i = 0; i < len; i++) {
-    if (yyjson_likely(src[i] >> 6 != 2)) {
+    if (yyjson_likely((src[i] & 0xff) >> 6 != 2)) {
       count++;
     }
   }
