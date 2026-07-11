@@ -30,6 +30,20 @@ class Document:
         flags: Optional[ReaderFlags] = ...,
         default: Callable[[Any], Any] = ...,
     ): ...
+    @classmethod
+    def from_obj(
+        cls,
+        obj: Any,
+        *,
+        default: Optional[Callable[[Any], Any]] = None,
+    ) -> "Document": ...
+    @classmethod
+    def from_json(
+        cls,
+        content: Union[str, bytes, Path],
+        *,
+        flags: Optional[ReaderFlags] = ...,
+    ) -> "Document": ...
     def __len__(self) -> int: ...
     def get_pointer(self, pointer: str) -> Any: ...
     def dumps(
@@ -73,32 +87,7 @@ def loads(
     object_pairs_hook=None,
     **kw
 ): ...
-def dumps(
-    obj,
-    *,
-    skipkeys=False,
-    ensure_ascii=True,
-    check_circular=True,
-    allow_nan=True,
-    cls=None,
-    indent=None,
-    separators=None,
-    default=None,
-    sort_keys=False,
-    **kw
-): ...
+def dumps(obj: Any, *, default: Optional[Callable[[Any], Any]] = None) -> str: ...
 def dump(
-    obj,
-    fp,
-    *,
-    skipkeys=False,
-    ensure_ascii=True,
-    check_circular=True,
-    allow_nan=True,
-    cls=None,
-    indent=None,
-    separators=None,
-    default=None,
-    sort_keys=False,
-    **kw
-): ...
+    obj: Any, fp: Any, *, default: Optional[Callable[[Any], Any]] = None
+) -> None: ...

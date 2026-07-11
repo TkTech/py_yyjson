@@ -25,6 +25,38 @@ def test_document_from_str():
     assert doc.as_obj == {"hello": "world"}
 
 
+def test_document_from_json():
+    """Document.from_json always parses str/bytes/Path as JSON text."""
+    doc = Document.from_json('{"a": 1}')
+    assert doc.as_obj == {"a": 1}
+    assert doc.is_thawed is False  # parsed documents are immutable
+
+    assert Document.from_json(b'{"a": 1}').as_obj == {"a": 1}
+
+    # Reader flags are honored.
+    doc = Document.from_json(
+        '{"a": 1,}', flags=ReaderFlags.ALLOW_TRAILING_COMMAS
+    )
+    assert doc.as_obj == {"a": 1}
+
+    # A non-JSON-text argument is a TypeError, not a silent build-from-object.
+    with pytest.raises(TypeError):
+        Document.from_json({"a": 1})
+    with pytest.raises(TypeError):
+        Document.from_json(123)
+
+    # Invalid JSON raises ValueError.
+    with pytest.raises(ValueError):
+        Document.from_json("not json")
+
+
+def test_document_from_json_path(tmp_path):
+    """Document.from_json reads and parses a file given a Path."""
+    p = tmp_path / "doc.json"
+    p.write_text('{"greeting": "café 日本"}', encoding="utf-8")
+    assert Document.from_json(p).as_obj == {"greeting": "café 日本"}
+
+
 def test_document_types():
     """Ensure each primitive type can be upcast (which does not have its own
     dedicated test.)"""

@@ -68,8 +68,8 @@ def loads(s):
 
 
 def dumps(obj, *, default=None):
-    return Document(obj, default=default).dumps()
+    return Document.from_obj(obj, default=default).dumps()
 
 
 def dump(obj, fp, *, default=None):
-    fp.write(Document(obj, default=default).dumps())
+    fp.write(Document.from_obj(obj, default=default).dumps())

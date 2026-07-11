@@ -461,6 +461,124 @@ static PyObject *Document_new(
   return (PyObject *)self;
 }
 
+/**
+ * Build the given (freshly-allocated) Document from a JSON-serializable Python
+ * object. Unlike parsing, a ``str``/``bytes`` argument is serialized as a JSON
+ * value rather than interpreted as JSON text. Returns 0 on success, -1 (with an
+ * exception set) on failure.
+ */
+static int document_build_from_object(DocumentObject *self, PyObject *content) {
+  self->m_doc = yyjson_mut_doc_new(self->alc);
+  if (!self->m_doc) {
+    PyErr_SetString(
+        PyExc_ValueError, "Unable to create empty mutable document."
+    );
+    return -1;
+  }
+
+  yyjson_mut_val *val = mut_primitive_to_element(self, self->m_doc, content);
+  if (val == NULL) {
+    return -1;
+  }
+
+  yyjson_mut_doc_set_root(self->m_doc, val);
+  return 0;
+}
+
+/**
+ * Lazily import ``pathlib.Path`` into the module-global ``path`` (keeping the
+ * module alive in ``pathlib``). The globals are only published once both the
+ * import and attribute lookup succeed, so a partial failure can't poison the
+ * cache. Returns 0 on success, -1 (with an exception set) on failure.
+ */
+static int ensure_pathlib(void) {
+  if (yyjson_likely(path != NULL)) {
+    return 0;
+  }
+
+  PyObject *mod = PyImport_ImportModule("pathlib");
+  if (mod == NULL) {
+    return -1;
+  }
+
+  PyObject *cls = PyObject_GetAttrString(mod, "Path");
+  if (cls == NULL) {
+    Py_DECREF(mod);
+    return -1;
+  }
+
+  pathlib = mod;
+  path = cls;
+  return 0;
+}
+
+/**
+ * Parse `content` as JSON text into self->i_doc. `content` may be a ``str``,
+ * ``bytes``, or a ``pathlib.Path`` (read from disk). Returns:
+ *   0  parsed successfully,
+ *  -1  an error occurred (a Python exception is set),
+ *   1  `content` is not a JSON-text type and should be built from instead.
+ */
+static int document_read_json(
+    DocumentObject *self, PyObject *content, yyjson_read_flag r_flag
+) {
+  yyjson_read_err err;
+
+  if (yyjson_likely(PyBytes_Check(content))) {
+    Py_ssize_t content_len;
+    const char *content_as_utf8 = NULL;
+    PyBytes_AsStringAndSize(content, (char **)&content_as_utf8, &content_len);
+    // As long as we don't expose the insitu reader flag, it's safe to discard
+    // the const here.
+    self->i_doc = yyjson_read_opts(
+        (char *)content_as_utf8, content_len, r_flag, self->alc, &err
+    );
+  } else if (yyjson_likely(PyUnicode_Check(content))) {
+    Py_ssize_t content_len;
+    const char *content_as_utf8 =
+        PyUnicode_AsUTF8AndSize(content, &content_len);
+    if (content_as_utf8 == NULL) {
+      return -1;
+    }
+    self->i_doc = yyjson_read_opts(
+        (char *)content_as_utf8, content_len, r_flag, self->alc, &err
+    );
+  } else {
+    if (ensure_pathlib() < 0) {
+      return -1;
+    }
+
+    int is_path = PyObject_IsInstance(content, path);
+    if (is_path < 0) {
+      return -1;
+    }
+    if (!is_path) {
+      return 1;
+    }
+
+    // We were given a Path object to a location on disk.
+    PyObject *as_str = PyObject_Str(content);
+    if (as_str == NULL) {
+      return -1;
+    }
+    Py_ssize_t str_len;
+    const char *str = PyUnicode_AsUTF8AndSize(as_str, &str_len);
+    if (str == NULL) {
+      Py_DECREF(as_str);
+      return -1;
+    }
+    self->i_doc = yyjson_read_file(str, r_flag, self->alc, &err);
+    Py_DECREF(as_str);
+  }
+
+  if (!self->i_doc) {
+    PyErr_SetString(PyExc_ValueError, err.msg);
+    return -1;
+  }
+
+  return 0;
+}
+
 PyDoc_STRVAR(
     Document_init_doc,
     "A single JSON document.\n"
@@ -507,7 +625,6 @@ static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
   static char *kwlist[] = {"content", "flags", "default", NULL};
   PyObject *content;
   PyObject *default_func = NULL;
-  yyjson_read_err err;
   yyjson_read_flag r_flag = 0;
 
   if (!PyArg_ParseTupleAndKeywords(
@@ -524,98 +641,122 @@ static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
   self->default_func = default_func == Py_None ? NULL : default_func;
   Py_XINCREF(default_func);
 
-  if (yyjson_unlikely(pathlib == NULL)) {
-    pathlib = PyImport_ImportModule("pathlib");
-    if (yyjson_unlikely(pathlib == NULL)) {
-      return -1;
-    }
-    path = PyObject_GetAttrString(pathlib, "Path");
-    if (yyjson_unlikely(path == NULL)) {
-      return -1;
-    }
+  // A str/bytes/Path is parsed as JSON; anything else is built from as a
+  // Python object.
+  int result = document_read_json(self, content, r_flag);
+  if (result == 1) {
+    return document_build_from_object(self, content);
   }
 
-  if (yyjson_likely(PyBytes_Check(content))) {
-    Py_ssize_t content_len;
-    const char *content_as_utf8 = NULL;
+  return result;
+}
 
-    PyBytes_AsStringAndSize(content, (char **)&content_as_utf8, &content_len);
+PyDoc_STRVAR(
+    Document_from_obj_doc,
+    "from_obj(obj, *, default=None)\n"
+    "\n"
+    "Build a :class:`Document` from a JSON-serializable Python object.\n"
+    "\n"
+    "Unlike the constructor, a ``str`` or ``bytes`` argument is serialized as a\n"
+    "JSON value rather than parsed as JSON text.\n"
+    "\n"
+    ":param obj: The Python object to build the document from.\n"
+    ":param default: A function called to convert objects that are not\n"
+    "                JSON serializable.\n"
+    ":type default: callable, optional"
+);
+static PyObject *Document_from_obj(
+    PyObject *cls, PyObject *args, PyObject *kwds
+) {
+  static char *kwlist[] = {"obj", "default", NULL};
+  PyObject *content = NULL;
+  PyObject *default_func = NULL;
 
-    self->i_doc = yyjson_read_opts(
-        // As long as we don't expose the insitu reader flag, it's safe to
-        // discard the const here.
-        (char *)content_as_utf8, content_len, r_flag, self->alc, &err
-    );
-
-    if (!self->i_doc) {
-      PyErr_SetString(PyExc_ValueError, err.msg);
-      return -1;
-    }
-
-    return 0;
-  } else if (yyjson_likely(PyUnicode_Check(content))) {
-    // We were given a string, so just parse it into a document.
-    Py_ssize_t content_len;
-    const char *content_as_utf8 = NULL;
-
-    content_as_utf8 = PyUnicode_AsUTF8AndSize(content, &content_len);
-
-    self->i_doc = yyjson_read_opts(
-        // As long as we don't expose the insitu reader flag, it's safe to
-        // discard the const here.
-        (char *)content_as_utf8, content_len, r_flag, self->alc, &err
-    );
-
-    if (!self->i_doc) {
-      PyErr_SetString(PyExc_ValueError, err.msg);
-      return -1;
-    }
-
-    return 0;
-  } else if (yyjson_unlikely(PyObject_IsInstance(content, path))) {
-    // We were given a Path object to a location on disk.
-    PyObject *as_str = PyObject_Str(content);
-    if (!as_str) {
-      return -1;
-    }
-
-    Py_ssize_t str_len;
-    const char *str = PyUnicode_AsUTF8AndSize(as_str, &str_len);
-    if (!str) {
-      Py_XDECREF(as_str);
-      return -1;
-    }
-
-    self->i_doc = yyjson_read_file(str, r_flag, self->alc, &err);
-
-    Py_XDECREF(as_str);
-
-    if (!self->i_doc) {
-      PyErr_SetString(PyExc_ValueError, err.msg);
-      return -1;
-    }
-
-    return 0;
-  } else {
-    self->m_doc = yyjson_mut_doc_new(self->alc);
-
-    if (!self->m_doc) {
-      PyErr_SetString(
-          PyExc_ValueError, "Unable to create empty mutable document."
-      );
-      return -1;
-    }
-
-    yyjson_mut_val *val = mut_primitive_to_element(self, self->m_doc, content);
-
-    if (val == NULL) {
-      return -1;
-    }
-
-    yyjson_mut_doc_set_root(self->m_doc, val);
-
-    return 0;
+  if (!PyArg_ParseTupleAndKeywords(
+          args, kwds, "O|$O", kwlist, &content, &default_func
+      )) {
+    return NULL;
   }
+
+  if (default_func && default_func != Py_None &&
+      !PyCallable_Check(default_func)) {
+    PyErr_SetString(PyExc_TypeError, "default must be callable");
+    return NULL;
+  }
+
+  PyTypeObject *type = (PyTypeObject *)cls;
+  DocumentObject *self = (DocumentObject *)type->tp_alloc(type, 0);
+  if (self == NULL) {
+    return NULL;
+  }
+
+  self->m_doc = NULL;
+  self->i_doc = NULL;
+  self->alc = &PyMem_Allocator;
+  self->default_func = default_func == Py_None ? NULL : default_func;
+  Py_XINCREF(self->default_func);
+
+  if (document_build_from_object(self, content) < 0) {
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  return (PyObject *)self;
+}
+
+PyDoc_STRVAR(
+    Document_from_json_doc,
+    "from_json(content, *, flags=0)\n"
+    "\n"
+    "Parse a JSON document from a ``str``, ``bytes``, or a ``pathlib.Path``\n"
+    "(read from disk).\n"
+    "\n"
+    "This is the explicit counterpart to :meth:`from_obj`: the argument is\n"
+    "always parsed as JSON text, never built from as a Python value.\n"
+    "\n"
+    ":param content: The JSON document as ``str``/``bytes``, or a ``Path`` to a\n"
+    "                file to read.\n"
+    ":param flags: Flags that modify the parsing behaviour.\n"
+    ":type flags: :class:`ReaderFlags`, optional"
+);
+static PyObject *Document_from_json(
+    PyObject *cls, PyObject *args, PyObject *kwds
+) {
+  static char *kwlist[] = {"content", "flags", NULL};
+  PyObject *content = NULL;
+  yyjson_read_flag r_flag = 0;
+
+  if (!PyArg_ParseTupleAndKeywords(
+          args, kwds, "O|$I", kwlist, &content, &r_flag
+      )) {
+    return NULL;
+  }
+
+  PyTypeObject *type = (PyTypeObject *)cls;
+  DocumentObject *self = (DocumentObject *)type->tp_alloc(type, 0);
+  if (self == NULL) {
+    return NULL;
+  }
+
+  self->m_doc = NULL;
+  self->i_doc = NULL;
+  self->alc = &PyMem_Allocator;
+  self->default_func = NULL;
+
+  int result = document_read_json(self, content, r_flag);
+  if (result == 1) {
+    PyErr_Format(PyExc_TypeError,
+        "from_json() expects str, bytes, or Path, not '%s'",
+        Py_TYPE(content)->tp_name
+    );
+    result = -1;
+  }
+  if (result < 0) {
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  return (PyObject *)self;
 }
 
 /**
@@ -1053,6 +1194,10 @@ static Py_ssize_t Document_length(DocumentObject *self) {
 }
 
 static PyMethodDef Document_methods[] = {
+    {"from_obj", (PyCFunction)(void (*)(void))Document_from_obj,
+     METH_VARARGS | METH_KEYWORDS | METH_CLASS, Document_from_obj_doc},
+    {"from_json", (PyCFunction)(void (*)(void))Document_from_json,
+     METH_VARARGS | METH_KEYWORDS | METH_CLASS, Document_from_json_doc},
     {"patch", (PyCFunction)(void (*)(void))Document_patch,
      METH_VARARGS | METH_KEYWORDS, Document_patch_doc},
     {"dumps", (PyCFunction)(void (*)(void))Document_dumps,
