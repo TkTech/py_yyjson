@@ -22,7 +22,9 @@ static PyObject *path = NULL;
 static inline size_t num_utf8_chars(const char *src, size_t len) {
   size_t count = 0;
   for (size_t i = 0; i < len; i++) {
-    if (yyjson_likely(src[i] >> 6 != 2)) {
+    // Cast to unsigned: on signed-char platforms a continuation byte would be
+    // negative and `>> 6` yields -2, miscounting it as a character.
+    if (yyjson_likely((unsigned char)src[i] >> 6 != 2)) {
       count++;
     }
   }

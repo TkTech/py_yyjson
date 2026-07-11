@@ -41,6 +41,31 @@ def test_document_types():
         assert doc.as_obj == dst
 
 
+def test_document_unicode_as_obj():
+    """Non-ASCII strings must survive the round-trip through .as_obj, not just
+    dumps(). Regression test for the ASCII fast-path miscounting multi-byte
+    UTF-8 continuation bytes."""
+    cases = [
+        "café",                     # 2-byte sequences
+        "naïve",
+        "日本語",                    # 3-byte sequences
+        "Ω≈ç√",
+        "🙇🎉",                     # 4-byte sequences (astral plane)
+        "mixed café 日本 🙇 tail",  # ASCII interleaved with multi-byte
+    ]
+    for value in cases:
+        doc = Document('{"key": "%s"}' % value)
+        assert doc.as_obj == {"key": value}
+
+    # Non-ASCII object keys go through the same fast-path.
+    doc = Document('{"café": "value"}')
+    assert doc.as_obj == {"café": "value"}
+
+    # The bytes input path decodes through the same conversion.
+    doc = Document('["日本語"]'.encode("utf-8"))
+    assert doc.as_obj == ["日本語"]
+
+
 def test_document_dumps():
     """
     Ensure we can properly dump a document to a string.
