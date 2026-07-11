@@ -47,12 +47,14 @@ release = [
 
 [tool.setuptools]
 ext-modules = [
-    { name = "cyyjson", sources = ["yyjson/binding.c", "yyjson/yyjson.c", "yyjson/memory.c", "yyjson/document.c"], py-limited-api = true}
+    { name = "cyyjson", sources = ["yyjson/binding.c", "yyjson/yyjson.c", "yyjson/memory.c", "yyjson/document.c"] }
 ]
 packages = ["yyjson"]
 
 [tool.cibuildwheel]
 enable = ["pypy"]
+test-requires = "pytest"
+test-command = "pytest {project}/tests"
 
 [tool.uv]
 cache-keys = [
