@@ -1,4 +1,5 @@
 import enum
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, BinaryIO, Optional, List, Dict, Protocol, Union, Callable
 
@@ -31,13 +32,19 @@ class ReaderFlags(enum.IntFlag):
 
 class WriterFlags(enum.IntFlag):
     PRETTY = 0x01
+    PRETTY_TWO_SPACES = 0x40
     ESCAPE_UNICODE = 0x02
     ESCAPE_SLASHES = 0x04
     ALLOW_INF_AND_NAN = 0x08
     INF_AND_NAN_AS_NULL = 0x10
     WRITE_NEWLINE_AT_END = 0x80
 
-Content = Union[str, bytes, List, Dict, Path, BinaryIO]
+# The constructor either parses (str/bytes/Path) or builds from a Python
+# object; with a ``default`` callback the build side can accept anything, so
+# this lists the natively-handled types rather than being exhaustive.
+Content = Union[
+    str, bytes, Path, BinaryIO, Dict, List, tuple, int, float, bool, Decimal, None
+]
 
 class Document:
     as_obj: Any
@@ -70,7 +77,7 @@ class Document:
     ) -> str: ...
     def patch(
         self,
-        patch: "Document",
+        patch: Union["Document", Content],
         *,
         at_pointer: Optional[str] = None,
         use_merge_patch: bool = False
@@ -82,28 +89,8 @@ class Document:
     def freeze(self) -> None: ...
     def thaw(self) -> None: ...
 
-def load(
-    fp,
-    *,
-    cls=None,
-    object_hook=None,
-    parse_float=None,
-    parse_int=None,
-    parse_constant=None,
-    object_pairs_hook=None,
-    **kw
-): ...
-def loads(
-    s,
-    *,
-    cls=None,
-    object_hook=None,
-    parse_float=None,
-    parse_int=None,
-    parse_constant=None,
-    object_pairs_hook=None,
-    **kw
-): ...
+def load(fp: Any) -> Any: ...
+def loads(s: Union[str, bytes, Path]) -> Any: ...
 def dumps(obj: Any, *, default: Optional[Callable[[Any], Any]] = None) -> str: ...
 def dump(
     obj: Any, fp: Any, *, default: Optional[Callable[[Any], Any]] = None

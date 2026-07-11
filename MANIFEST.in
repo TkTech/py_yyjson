@@ -8,3 +8,5 @@ include yyjson/document.h
 include yyjson/decimal.h
 include yyjson/sax.c
 include yyjson/sax.h
+include yyjson/py.typed
+include yyjson/__init__.pyi

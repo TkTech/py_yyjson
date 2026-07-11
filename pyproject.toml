@@ -51,6 +51,9 @@ ext-modules = [
 ]
 packages = ["yyjson"]
 
+[tool.setuptools.package-data]
+yyjson = ["py.typed", "*.pyi"]
+
 [tool.cibuildwheel]
 enable = ["pypy"]
 test-requires = "pytest"
