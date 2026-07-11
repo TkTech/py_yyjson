@@ -63,6 +63,7 @@ static inline PyObject *unicode_from_str(const char *src, size_t len) {
  **/
 static PyObject *element_to_primitive(yyjson_val *val) {
   yyjson_type type = yyjson_get_type(val);
+  PyObject *container = NULL;
 
   switch (type) {
     case YYJSON_TYPE_NULL:
@@ -89,39 +90,39 @@ static PyObject *element_to_primitive(yyjson_val *val) {
       return unicode_from_str(str, str_len);
     }
     case YYJSON_TYPE_ARR: {
-      PyObject *arr = PyList_New(yyjson_arr_size(val));
-      if (!arr) {
+      if (Py_EnterRecursiveCall(
+              " while converting a JSON document to Python objects")) {
         return NULL;
       }
 
-      yyjson_val *obj_val;
-      PyObject *py_val;
+      container = PyList_New(yyjson_arr_size(val));
+      if (!container) goto error;
 
+      yyjson_val *obj_val;
       yyjson_arr_iter iter = {0};
       yyjson_arr_iter_init(val, &iter);
 
       size_t idx = 0;
       while ((obj_val = yyjson_arr_iter_next(&iter))) {
-        py_val = element_to_primitive(obj_val);
-        if (!py_val) {
-          return NULL;
-        }
+        PyObject *py_val = element_to_primitive(obj_val);
+        if (!py_val) goto error;
 
-        PyList_SET_ITEM(arr, idx++, py_val);
+        PyList_SET_ITEM(container, idx++, py_val);
       }
 
-      return arr;
+      Py_LeaveRecursiveCall();
+      return container;
     }
     case YYJSON_TYPE_OBJ: {
-      PyObject *dict = PyDict_New();
-      if (!dict) {
+      if (Py_EnterRecursiveCall(
+              " while converting a JSON document to Python objects")) {
         return NULL;
       }
 
+      container = PyDict_New();
+      if (!container) goto error;
+
       yyjson_val *obj_key, *obj_val;
-      PyObject *py_key, *py_val;
-      const char *str;
-      size_t str_len;
 
       yyjson_obj_iter iter = {0};
       yyjson_obj_iter_init(val, &iter);
@@ -129,29 +130,24 @@ static PyObject *element_to_primitive(yyjson_val *val) {
       while ((obj_key = yyjson_obj_iter_next(&iter))) {
         obj_val = yyjson_obj_iter_get_val(obj_key);
 
-        str_len = yyjson_get_len(obj_key);
-        str = yyjson_get_str(obj_key);
+        PyObject *py_key =
+            unicode_from_str(yyjson_get_str(obj_key), yyjson_get_len(obj_key));
+        if (!py_key) goto error;
 
-        py_key = unicode_from_str(str, str_len);
-        py_val = element_to_primitive(obj_val);
-
-        if (!py_key) {
-          return NULL;
-        }
-
+        PyObject *py_val = element_to_primitive(obj_val);
         if (!py_val) {
           Py_DECREF(py_key);
-          return NULL;
+          goto error;
         }
 
-        if (PyDict_SetItem(dict, py_key, py_val) == -1) {
-          return NULL;
-        }
-
+        int rc = PyDict_SetItem(container, py_key, py_val);
         Py_DECREF(py_key);
         Py_DECREF(py_val);
+        if (rc == -1) goto error;
       }
-      return dict;
+
+      Py_LeaveRecursiveCall();
+      return container;
     }
     case YYJSON_TYPE_RAW: {
       size_t str_len = yyjson_get_len(val);
@@ -166,6 +162,11 @@ static PyObject *element_to_primitive(yyjson_val *val) {
       PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
       return NULL;
   }
+
+error:
+  Py_LeaveRecursiveCall();
+  Py_XDECREF(container);
+  return NULL;
 }
 
 /**
@@ -174,6 +175,7 @@ static PyObject *element_to_primitive(yyjson_val *val) {
  **/
 static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
   yyjson_type type = yyjson_mut_get_type(val);
+  PyObject *container = NULL;
 
   switch (type) {
     case YYJSON_TYPE_NULL:
@@ -201,37 +203,39 @@ static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
       return PyUnicode_FromStringAndSize(str, str_len);
     }
     case YYJSON_TYPE_ARR: {
-      PyObject *arr = PyList_New(yyjson_mut_arr_size(val));
-      if (!arr) {
+      if (Py_EnterRecursiveCall(
+              " while converting a JSON document to Python objects")) {
         return NULL;
       }
 
-      yyjson_mut_val *obj_val;
-      PyObject *py_val;
+      container = PyList_New(yyjson_mut_arr_size(val));
+      if (!container) goto error;
 
+      yyjson_mut_val *obj_val;
       yyjson_mut_arr_iter iter = {0};
       yyjson_mut_arr_iter_init(val, &iter);
 
       size_t idx = 0;
       while ((obj_val = yyjson_mut_arr_iter_next(&iter))) {
-        py_val = mut_element_to_primitive(obj_val);
-        if (!py_val) {
-          return NULL;
-        }
+        PyObject *py_val = mut_element_to_primitive(obj_val);
+        if (!py_val) goto error;
 
-        PyList_SET_ITEM(arr, idx++, py_val);
+        PyList_SET_ITEM(container, idx++, py_val);
       }
 
-      return arr;
+      Py_LeaveRecursiveCall();
+      return container;
     }
     case YYJSON_TYPE_OBJ: {
-      PyObject *dict = PyDict_New();
-      if (!dict) {
+      if (Py_EnterRecursiveCall(
+              " while converting a JSON document to Python objects")) {
         return NULL;
       }
 
+      container = PyDict_New();
+      if (!container) goto error;
+
       yyjson_mut_val *obj_key, *obj_val;
-      PyObject *py_key, *py_val;
 
       yyjson_mut_obj_iter iter = {0};
       yyjson_mut_obj_iter_init(val, &iter);
@@ -239,26 +243,23 @@ static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
       while ((obj_key = yyjson_mut_obj_iter_next(&iter))) {
         obj_val = yyjson_mut_obj_iter_get_val(obj_key);
 
-        py_key = mut_element_to_primitive(obj_key);
-        py_val = mut_element_to_primitive(obj_val);
+        PyObject *py_key = mut_element_to_primitive(obj_key);
+        if (!py_key) goto error;
 
-        if (!py_key) {
-          return NULL;
-        }
-
+        PyObject *py_val = mut_element_to_primitive(obj_val);
         if (!py_val) {
           Py_DECREF(py_key);
-          return NULL;
+          goto error;
         }
 
-        if (PyDict_SetItem(dict, py_key, py_val) == -1) {
-          return NULL;
-        }
-
+        int rc = PyDict_SetItem(container, py_key, py_val);
         Py_DECREF(py_key);
         Py_DECREF(py_val);
+        if (rc == -1) goto error;
       }
-      return dict;
+
+      Py_LeaveRecursiveCall();
+      return container;
     }
     case YYJSON_TYPE_RAW: {
       size_t str_len = yyjson_mut_get_len(val);
@@ -273,6 +274,11 @@ static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
       PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
       return NULL;
   }
+
+error:
+  Py_LeaveRecursiveCall();
+  Py_XDECREF(container);
+  return NULL;
 }
 
 PyTypeObject *type_for_conversion(PyObject *obj) {
@@ -311,7 +317,12 @@ static inline yyjson_mut_val *mut_primitive_to_element(
     if (result == NULL) {
       return NULL;
     }
+    if (Py_EnterRecursiveCall(" while converting a Python object to JSON")) {
+      Py_DECREF(result);
+      return NULL;
+    }
     yyjson_mut_val *val = mut_primitive_to_element(self, doc, result);
+    Py_LeaveRecursiveCall();
     Py_DECREF(result);
     return val;
   }
@@ -347,34 +358,38 @@ static inline yyjson_mut_val *mut_primitive_to_element(
       }
     }
   } else if (ob_type == &PyList_Type) {
+    if (Py_EnterRecursiveCall(" while converting a Python object to JSON")) {
+      return NULL;
+    }
     yyjson_mut_val *val = yyjson_mut_arr(doc);
-    yyjson_mut_val *object_value = NULL;
     for (Py_ssize_t i = 0; i < PyList_GET_SIZE(obj); i++) {
-      object_value = mut_primitive_to_element(self, doc, PyList_GET_ITEM(obj, i));
-
-      if (yyjson_unlikely(object_value == NULL)) {
-        return NULL;
-      }
+      yyjson_mut_val *object_value =
+          mut_primitive_to_element(self, doc, PyList_GET_ITEM(obj, i));
+      if (yyjson_unlikely(object_value == NULL)) goto error;
 
       yyjson_mut_arr_append(val, object_value);
     }
+    Py_LeaveRecursiveCall();
     return val;
   } else if (ob_type == &PyTuple_Type) {
+    if (Py_EnterRecursiveCall(" while converting a Python object to JSON")) {
+      return NULL;
+    }
     yyjson_mut_val *val = yyjson_mut_arr(doc);
-    yyjson_mut_val *object_value = NULL;
     for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(obj); i++) {
-      object_value = mut_primitive_to_element(self, doc, PyTuple_GET_ITEM(obj, i));
-
-      if (yyjson_unlikely(object_value == NULL)) {
-        return NULL;
-      }
+      yyjson_mut_val *object_value =
+          mut_primitive_to_element(self, doc, PyTuple_GET_ITEM(obj, i));
+      if (yyjson_unlikely(object_value == NULL)) goto error;
 
       yyjson_mut_arr_append(val, object_value);
     }
+    Py_LeaveRecursiveCall();
     return val;
   } else if (ob_type == &PyDict_Type) {
+    if (Py_EnterRecursiveCall(" while converting a Python object to JSON")) {
+      return NULL;
+    }
     yyjson_mut_val *val = yyjson_mut_obj(doc);
-    yyjson_mut_val *object_value = NULL;
     Py_ssize_t i = 0;
     PyObject *key, *value;
 
@@ -382,20 +397,17 @@ static inline yyjson_mut_val *mut_primitive_to_element(
       Py_ssize_t str_len;
       const char *str = PyUnicode_AsUTF8AndSize(key, &str_len);
       if (yyjson_unlikely(str == NULL)) {
-        PyErr_Format(PyExc_TypeError,
-            "Dictionary keys must be strings",
-            Py_TYPE(obj)->tp_name
-        );
-        return NULL;
+        PyErr_SetString(PyExc_TypeError, "Dictionary keys must be strings");
+        goto error;
       }
-      object_value = mut_primitive_to_element(self, doc, value);
-      if (yyjson_unlikely(object_value == NULL)) {
-        return NULL;
-      }
+      yyjson_mut_val *object_value = mut_primitive_to_element(self, doc, value);
+      if (yyjson_unlikely(object_value == NULL)) goto error;
+
       yyjson_mut_obj_add(
           val, yyjson_mut_strncpy(doc, str, str_len), object_value
       );
     }
+    Py_LeaveRecursiveCall();
     return val;
   } else if (ob_type == &PyFloat_Type) {
     double dnum = PyFloat_AsDouble(obj);
@@ -421,6 +433,10 @@ static inline yyjson_mut_val *mut_primitive_to_element(
     );
     return NULL;
   }
+
+error:
+  Py_LeaveRecursiveCall();
+  return NULL;
 }
 
 static void Document_dealloc(DocumentObject *self) {

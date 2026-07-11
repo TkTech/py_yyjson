@@ -333,3 +333,25 @@ def test_document_size():
     # Test with mutable document (created from Python object) - should return 0
     doc_mutable = Document({"hello": "world"})
     assert doc_mutable.bytes_read == 0
+
+
+def test_document_deeply_nested_raises():
+    """Deeply nested input must raise a catchable RecursionError rather than
+    overflowing the C stack, matching the stdlib json module."""
+    depth = 100_000
+
+    # Parsing succeeds (yyjson's reader is iterative); materializing to Python
+    # objects recurses and must raise instead of segfaulting.
+    doc = Document("[" * depth + "]" * depth)
+    with pytest.raises(RecursionError):
+        doc.as_obj
+
+    # Serializing a deeply nested Python object recurses on the way in.
+    nested = []
+    current = nested
+    for _ in range(depth):
+        child = []
+        current.append(child)
+        current = child
+    with pytest.raises(RecursionError):
+        Document(nested)
