@@ -23,4 +23,10 @@ typedef struct {
 
 extern PyTypeObject DocumentType;
 
+/**
+ * Convert a UTF-8 string of `len` bytes into a Python ``str``, using a fast
+ * path for pure-ASCII input. Shared with the streaming (SAX) reader.
+ */
+PyObject *unicode_from_str(const char *src, size_t len);
+
 #endif

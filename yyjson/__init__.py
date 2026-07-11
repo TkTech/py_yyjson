@@ -1,8 +1,8 @@
-__all__ = ["Document", "ReaderFlags", "WriterFlags"]
+__all__ = ["Document", "ReaderFlags", "WriterFlags", "sax"]
 
 import enum
 
-from cyyjson import Document
+from cyyjson import Document, sax
 
 
 class ReaderFlags(enum.IntFlag):

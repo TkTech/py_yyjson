@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yyjson"
-version = "4.1.0"
+version = "5.0.0"
 description = "JSON parser & serializer built on yyjson"
 readme = "README.md"
 authors = [
@@ -47,7 +47,7 @@ release = [
 
 [tool.setuptools]
 ext-modules = [
-    { name = "cyyjson", sources = ["yyjson/binding.c", "yyjson/yyjson.c", "yyjson/memory.c", "yyjson/document.c"] }
+    { name = "cyyjson", sources = ["yyjson/binding.c", "yyjson/yyjson.c", "yyjson/memory.c", "yyjson/document.c", "yyjson/sax.c"] }
 ]
 packages = ["yyjson"]
 

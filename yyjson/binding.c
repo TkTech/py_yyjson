@@ -4,6 +4,7 @@
 #include "document.h"
 #include "memory.h"
 #include "decimal.h"
+#include "sax.h"
 #include "yyjson.h"
 
 PyObject *YY_DecimalModule = NULL;
@@ -11,7 +12,8 @@ PyObject *YY_DecimalClass = NULL;
 
 static PyModuleDef yymodule = {
     PyModuleDef_HEAD_INIT, .m_name = "cyyjson",
-    .m_doc = "Python bindings for the yyjson project.", .m_size = -1};
+    .m_doc = "Python bindings for the yyjson project.", .m_size = -1,
+    .m_methods = yyjson_sax_methods};
 
 PyMODINIT_FUNC PyInit_cyyjson(void) {
   PyObject* m;

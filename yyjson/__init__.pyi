@@ -1,6 +1,23 @@
 import enum
 from pathlib import Path
-from typing import Any, Optional, List, Dict, Union, Callable
+from typing import Any, BinaryIO, Optional, List, Dict, Protocol, Union, Callable
+
+class SAXHandler(Protocol):
+    """
+    Structural typing for a :func:`sax` handler. Every method is optional; only
+    those present are called. A method may return ``False`` to stop parsing
+    early.
+    """
+
+    def obj_begin(self) -> Any: ...
+    def obj_end(self, count: int) -> Any: ...
+    def arr_begin(self) -> Any: ...
+    def arr_end(self, count: int) -> Any: ...
+    def key(self, value: str) -> Any: ...
+    def string(self, value: str) -> Any: ...
+    def number(self, value: Any) -> Any: ...
+    def boolean(self, value: bool) -> Any: ...
+    def null(self) -> Any: ...
 
 class ReaderFlags(enum.IntFlag):
     STOP_WHEN_DONE = 0x02
@@ -20,7 +37,7 @@ class WriterFlags(enum.IntFlag):
     INF_AND_NAN_AS_NULL = 0x10
     WRITE_NEWLINE_AT_END = 0x80
 
-Content = Union[str, bytes, List, Dict, Path]
+Content = Union[str, bytes, List, Dict, Path, BinaryIO]
 
 class Document:
     as_obj: Any
@@ -90,4 +107,12 @@ def loads(
 def dumps(obj: Any, *, default: Optional[Callable[[Any], Any]] = None) -> str: ...
 def dump(
     obj: Any, fp: Any, *, default: Optional[Callable[[Any], Any]] = None
+) -> None: ...
+def sax(
+    source: Union[bytes, str, Path, BinaryIO],
+    handler: SAXHandler,
+    *,
+    flags: Optional[ReaderFlags] = ...,
+    window_size: int = ...,
+    max_depth: int = ...,
 ) -> None: ...

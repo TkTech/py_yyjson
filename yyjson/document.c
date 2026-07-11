@@ -34,7 +34,7 @@ static inline size_t num_utf8_chars(const char *src, size_t len) {
 /**
  * Convert the given UTF-8 string into a Python unicode object.
  */
-static inline PyObject *unicode_from_str(const char *src, size_t len) {
+PyObject *unicode_from_str(const char *src, size_t len) {
 #ifndef PYPY_VERSION
   // Exploit the internals of CPython's unicode implementation to
   // implement a fast-path for ASCII data, which is by far the
@@ -513,8 +513,116 @@ static int ensure_pathlib(void) {
 }
 
 /**
+ * Read a binary file-like object (``read``/``readinto``) fully into a buffer
+ * and parse it into ``self->i_doc``. The whole stream is drained in chunks, so
+ * any read()-able object works; note that a DOM inherently holds the entire
+ * document, so peak memory is O(document) regardless. For bounded memory over a
+ * huge stream, use the module-level ``sax()`` instead.
+ *
+ * Returns 0 on success, -1 (with an exception set) on failure.
+ */
+static int document_read_stream(
+    DocumentObject *self, PyObject *fileobj, yyjson_read_flag flag
+) {
+  PyObject *readinto = PyObject_GetAttrString(fileobj, "readinto");
+  PyObject *readm = NULL;
+  char *buf = NULL;
+  size_t cap = 0, len = 0;
+  const size_t CHUNK = (size_t)1 << 16;
+  yyjson_read_err err;
+
+  if (!readinto) {
+    PyErr_Clear();
+    readm = PyObject_GetAttrString(fileobj, "read");
+    if (!readm) {
+      PyErr_Clear();
+      PyErr_SetString(PyExc_TypeError,
+                      "expected a binary file-like object with read()");
+      return -1;
+    }
+  }
+
+  for (;;) {
+    size_t space;
+    if (len + CHUNK + 1 > cap) {
+      size_t ncap = cap ? cap * 2 : CHUNK * 2;
+      char *nb;
+      while (len + CHUNK + 1 > ncap) ncap *= 2;
+      nb = (char *)self->alc->realloc(self->alc->ctx, buf, cap, ncap);
+      if (!nb) { PyErr_NoMemory(); goto error; }
+      buf = nb;
+      cap = ncap;
+    }
+    space = cap - len - 1;
+
+    if (readinto) {
+      PyObject *mv = PyMemoryView_FromMemory(buf + len, (Py_ssize_t)space,
+                                             PyBUF_WRITE);
+      PyObject *r;
+      Py_ssize_t got;
+      if (!mv) goto error;
+      r = PyObject_CallOneArg(readinto, mv);
+      Py_DECREF(mv);
+      if (!r) goto error;
+      if (r == Py_None) { Py_DECREF(r); break; }
+      got = PyNumber_AsSsize_t(r, NULL);
+      Py_DECREF(r);
+      if (got < 0) {
+        if (!PyErr_Occurred())
+          PyErr_SetString(PyExc_ValueError, "readinto() returned < 0");
+        goto error;
+      }
+      if (got == 0) break;
+      len += (size_t)got;
+    } else {
+      PyObject *r = PyObject_CallFunction(readm, "n", (Py_ssize_t)space);
+      char *data;
+      Py_ssize_t got;
+      if (!r) goto error;
+      if (!PyBytes_Check(r)) {
+        Py_DECREF(r);
+        PyErr_SetString(PyExc_TypeError,
+                        "read() must return bytes; open in binary mode");
+        goto error;
+      }
+      if (PyBytes_AsStringAndSize(r, &data, &got) < 0) { Py_DECREF(r); goto error; }
+      if (got == 0) { Py_DECREF(r); break; }
+      if ((size_t)got > space) got = (Py_ssize_t)space;
+      memcpy(buf + len, data, (size_t)got);
+      Py_DECREF(r);
+      len += (size_t)got;
+    }
+  }
+
+  Py_XDECREF(readinto);
+  Py_XDECREF(readm);
+
+  if (len == 0) {
+    if (buf) self->alc->free(self->alc->ctx, buf);
+    PyErr_SetString(PyExc_ValueError, "no data read from stream");
+    return -1;
+  }
+
+  /* non-insitu read makes its own padded copy, so `buf` can be freed after */
+  self->i_doc = yyjson_read_opts(buf, len, flag, self->alc, &err);
+  self->alc->free(self->alc->ctx, buf);
+  if (!self->i_doc) {
+    PyErr_SetString(PyExc_ValueError, err.msg);
+    return -1;
+  }
+  return 0;
+
+error:
+  Py_XDECREF(readinto);
+  Py_XDECREF(readm);
+  if (buf) self->alc->free(self->alc->ctx, buf);
+  return -1;
+}
+
+/**
  * Parse `content` as JSON text into self->i_doc. `content` may be a ``str``,
- * ``bytes``, or a ``pathlib.Path`` (read from disk). Returns:
+ * ``bytes``, a ``pathlib.Path`` (read from disk), or a binary file-like object.
+ * Returns:
  *   0  parsed successfully,
  *  -1  an error occurred (a Python exception is set),
  *   1  `content` is not a JSON-text type and should be built from instead.
@@ -553,6 +661,11 @@ static int document_read_json(
       return -1;
     }
     if (!is_path) {
+      // A binary file-like object is streamed into a DOM; anything else is
+      // built from as a Python value by the caller.
+      if (PyObject_HasAttrString(content, "read")) {
+        return document_read_stream(self, content, r_flag);
+      }
       return 1;
     }
 
