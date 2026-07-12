@@ -293,6 +293,10 @@ static inline yyjson_mut_val *mut_primitive_to_element(
       return NULL;
     }
     yyjson_mut_val *val = yyjson_mut_arr(doc);
+    if (yyjson_unlikely(val == NULL)) {
+      PyErr_NoMemory();
+      goto error;
+    }
     for (Py_ssize_t i = 0; i < PyList_GET_SIZE(obj); i++) {
       yyjson_mut_val *object_value =
           mut_primitive_to_element(self, doc, PyList_GET_ITEM(obj, i));
@@ -307,6 +311,10 @@ static inline yyjson_mut_val *mut_primitive_to_element(
       return NULL;
     }
     yyjson_mut_val *val = yyjson_mut_arr(doc);
+    if (yyjson_unlikely(val == NULL)) {
+      PyErr_NoMemory();
+      goto error;
+    }
     for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(obj); i++) {
       yyjson_mut_val *object_value =
           mut_primitive_to_element(self, doc, PyTuple_GET_ITEM(obj, i));
@@ -324,6 +332,10 @@ static inline yyjson_mut_val *mut_primitive_to_element(
     Py_ssize_t i = 0;
     PyObject *key, *value;
 
+    if (yyjson_unlikely(val == NULL)) {
+      PyErr_NoMemory();
+      goto error;
+    }
     while (PyDict_Next(obj, &i, &key, &value)) {
       Py_ssize_t str_len;
       const char *str = PyUnicode_AsUTF8AndSize(key, &str_len);
@@ -334,9 +346,13 @@ static inline yyjson_mut_val *mut_primitive_to_element(
       yyjson_mut_val *object_value = mut_primitive_to_element(self, doc, value);
       if (yyjson_unlikely(object_value == NULL)) goto error;
 
-      yyjson_mut_obj_add(
-          val, yyjson_mut_strncpy(doc, str, str_len), object_value
-      );
+      // a NULL key would make obj_add silently drop the member
+      yyjson_mut_val *key_val = yyjson_mut_strncpy(doc, str, str_len);
+      if (yyjson_unlikely(key_val == NULL)) {
+        PyErr_NoMemory();
+        goto error;
+      }
+      yyjson_mut_obj_add(val, key_val, object_value);
     }
     Py_LeaveRecursiveCall();
     return val;
@@ -352,8 +368,13 @@ static inline yyjson_mut_val *mut_primitive_to_element(
     return yyjson_mut_null(doc);
   } else if (yyjson_unlikely(PyObject_IsInstance(obj, YY_DecimalClass))) {
     PyObject *str_repr = PyObject_Str(obj);
+    if (yyjson_unlikely(str_repr == NULL)) return NULL;
     Py_ssize_t str_len;
     const char *str = PyUnicode_AsUTF8AndSize(str_repr, &str_len);
+    if (yyjson_unlikely(str == NULL)) {
+      Py_DECREF(str_repr);
+      return NULL;
+    }
     yyjson_mut_val *val = yyjson_mut_rawncpy(doc, str, str_len);
     Py_DECREF(str_repr);
     return val;
@@ -409,6 +430,7 @@ static int document_build_from_object(DocumentObject *self, PyObject *content) {
 
   yyjson_mut_val *val = mut_primitive_to_element(self, self->m_doc, content);
   if (val == NULL) {
+    if (!PyErr_Occurred()) PyErr_NoMemory();
     return -1;
   }
 
@@ -1134,7 +1156,11 @@ PyDoc_STRVAR(
 );
 static PyObject *Document_freeze(DocumentObject *self) {
   if (self->m_doc) {
-    self->i_doc = yyjson_mut_doc_imut_copy(self->m_doc, self->alc);
+    yyjson_doc *copy = yyjson_mut_doc_imut_copy(self->m_doc, self->alc);
+    if (yyjson_unlikely(copy == NULL)) {
+      return PyErr_NoMemory();
+    }
+    self->i_doc = copy;
     yyjson_mut_doc_free(self->m_doc);
     self->m_doc = NULL;
   }
@@ -1156,7 +1182,11 @@ PyDoc_STRVAR(
 );
 static PyObject *Document_thaw(DocumentObject *self) {
   if (self->i_doc) {
-    self->m_doc = yyjson_doc_mut_copy(self->i_doc, self->alc);
+    yyjson_mut_doc *copy = yyjson_doc_mut_copy(self->i_doc, self->alc);
+    if (yyjson_unlikely(copy == NULL)) {
+      return PyErr_NoMemory();
+    }
+    self->m_doc = copy;
     yyjson_doc_free(self->i_doc);
     self->i_doc = NULL;
   }
