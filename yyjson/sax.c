@@ -195,7 +195,17 @@ static size_t py_source(void *ctx, void *buf, size_t len) {
         r = PyObject_CallOneArg(s->readinto, mv);
         Py_DECREF(mv);
         if (!r) { s->pc->error = true; return YYJSON_SAX_SOURCE_ERROR; }
-        if (r == Py_None) { Py_DECREF(r); return 0; } /* non-blocking: no data */
+        if (r == Py_None) {
+            /* None means "no data available right now" on a non-blocking
+               stream, not EOF; treating it as EOF would silently truncate. */
+            Py_DECREF(r);
+            PyErr_SetString(PyExc_BlockingIOError,
+                            "readinto() returned None (no data available on "
+                            "a non-blocking stream); a blocking stream is "
+                            "required");
+            s->pc->error = true;
+            return YYJSON_SAX_SOURCE_ERROR;
+        }
         n = PyNumber_AsSsize_t(r, NULL);
         Py_DECREF(r);
         if (n < 0) {
@@ -211,6 +221,15 @@ static size_t py_source(void *ctx, void *buf, size_t len) {
         Py_ssize_t n;
         r = PyObject_CallFunction(s->read, "n", (Py_ssize_t)len);
         if (!r) { s->pc->error = true; return YYJSON_SAX_SOURCE_ERROR; }
+        if (r == Py_None) {
+            Py_DECREF(r);
+            PyErr_SetString(PyExc_BlockingIOError,
+                            "read() returned None (no data available on a "
+                            "non-blocking stream); a blocking stream is "
+                            "required");
+            s->pc->error = true;
+            return YYJSON_SAX_SOURCE_ERROR;
+        }
         if (!PyBytes_Check(r)) {
             Py_DECREF(r);
             PyErr_SetString(PyExc_TypeError,
@@ -249,7 +268,8 @@ PyDoc_STRVAR(
     "file-like object (with ``readinto`` or ``read``), or a ``pathlib.Path``\n"
     "to open and stream. Buffer sources are read zero-copy and are pinned for\n"
     "the duration of the parse: resizing one from a handler callback raises\n"
-    "``BufferError``.\n"
+    "``BufferError``. File-like sources must be blocking: a read that returns\n"
+    "``None`` raises ``BlockingIOError``.\n"
     "\n"
     "``handler`` is any object; the following methods are called if present\n"
     "(each is optional):\n"

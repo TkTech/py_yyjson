@@ -303,3 +303,33 @@ def test_sax_handler_base_class():
     yyjson.sax('{"a": 1, "b": {"c": [true, null]}}', collector)
     assert collector.keys == ["a", "b", "c"]
     assert collector.obj_begin is None  # inherited default, skipped by C
+
+
+def test_sax_nonblocking_stream_raises():
+    """None from readinto()/read() (non-blocking, no data yet) raises
+    BlockingIOError instead of silently truncating the stream."""
+
+    class NonBlockingReadinto:
+        def __init__(self, *chunks):
+            self._chunks = list(chunks)
+
+        def readinto(self, buf):
+            if not self._chunks:
+                return None
+            chunk = self._chunks.pop(0)
+            buf[: len(chunk)] = chunk
+            return len(chunk)
+
+    class NonBlockingRead:
+        def __init__(self, *chunks):
+            self._chunks = list(chunks)
+
+        def read(self, n):
+            if not self._chunks:
+                return None
+            return self._chunks.pop(0)
+
+    with pytest.raises(BlockingIOError):
+        yyjson.sax(NonBlockingReadinto(b"[1, 2"), Builder())
+    with pytest.raises(BlockingIOError):
+        yyjson.sax(NonBlockingRead(b"[1, 2"), Builder())

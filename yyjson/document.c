@@ -706,7 +706,15 @@ static int document_read_stream(
       r = PyObject_CallOneArg(readinto, mv);
       Py_DECREF(mv);
       if (!r) goto error;
-      if (r == Py_None) { Py_DECREF(r); break; }
+      if (r == Py_None) {
+        /* None means "no data available right now" on a non-blocking
+           stream, not EOF; treating it as EOF would silently truncate. */
+        Py_DECREF(r);
+        PyErr_SetString(PyExc_BlockingIOError,
+                        "readinto() returned None (no data available on a "
+                        "non-blocking stream); a blocking stream is required");
+        goto error;
+      }
       got = PyNumber_AsSsize_t(r, NULL);
       Py_DECREF(r);
       if (got < 0) {
@@ -721,6 +729,13 @@ static int document_read_stream(
       char *data;
       Py_ssize_t got;
       if (!r) goto error;
+      if (r == Py_None) {
+        Py_DECREF(r);
+        PyErr_SetString(PyExc_BlockingIOError,
+                        "read() returned None (no data available on a "
+                        "non-blocking stream); a blocking stream is required");
+        goto error;
+      }
       if (!PyBytes_Check(r)) {
         Py_DECREF(r);
         PyErr_SetString(PyExc_TypeError,
@@ -850,7 +865,8 @@ static int document_read_json(
   }
   // A binary file-like object is streamed into a DOM; anything else is built
   // from as a Python value by the caller.
-  if (PyObject_HasAttrString(content, "read")) {
+  if (PyObject_HasAttrString(content, "readinto") ||
+      PyObject_HasAttrString(content, "read")) {
     return document_read_stream(self, content, r_flag);
   }
   return 1;

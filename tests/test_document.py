@@ -387,3 +387,43 @@ def test_document_deeply_nested_raises():
         current = child
     with pytest.raises(RecursionError):
         Document(nested)
+
+
+class _NonBlockingReadinto:
+    """Simulates a non-blocking binary stream: chunks, then None forever."""
+
+    def __init__(self, *chunks):
+        self._chunks = list(chunks)
+
+    def readinto(self, buf):
+        if not self._chunks:
+            return None
+        chunk = self._chunks.pop(0)
+        buf[: len(chunk)] = chunk
+        return len(chunk)
+
+
+class _NonBlockingRead:
+    def __init__(self, *chunks):
+        self._chunks = list(chunks)
+
+    def read(self, n):
+        if not self._chunks:
+            return None
+        return self._chunks.pop(0)
+
+
+def test_stream_nonblocking_readinto_raises():
+    """None from readinto() means "no data yet", not EOF. Previously this
+    silently truncated: b'[1]' followed by None parsed as [1]."""
+    with pytest.raises(BlockingIOError):
+        Document(_NonBlockingReadinto(b"[1]"))
+    with pytest.raises(BlockingIOError):
+        Document(_NonBlockingReadinto())
+
+
+def test_stream_nonblocking_read_raises():
+    with pytest.raises(BlockingIOError):
+        Document(_NonBlockingRead(b'{"a": 1}'))
+    with pytest.raises(BlockingIOError):
+        Document(_NonBlockingRead())
