@@ -1089,7 +1089,7 @@ static PyObject *Document_dumps(
   }
 
   obj_result = PyUnicode_FromStringAndSize(result, w_len);
-  self->alc->free(NULL, result);
+  self->alc->free(self->alc->ctx, result);
 
   return obj_result;
 }
