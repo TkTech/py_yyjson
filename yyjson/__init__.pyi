@@ -51,8 +51,9 @@ class Document:
     def __init__(
         self,
         content: Content,
-        flags: Optional[ReaderFlags] = ...,
-        default: Callable[[Any], Any] = ...,
+        *,
+        flags: ReaderFlags = ...,
+        default: Optional[Callable[[Any], Any]] = ...,
     ): ...
     @classmethod
     def from_obj(
@@ -66,14 +67,15 @@ class Document:
         cls,
         content: Union[str, bytes, Path],
         *,
-        flags: Optional[ReaderFlags] = ...,
+        flags: ReaderFlags = ...,
     ) -> "Document": ...
     def __len__(self) -> int: ...
     def get_pointer(self, pointer: str) -> Any: ...
     def dumps(
         self,
-        flags: Optional[WriterFlags] = ...,
-        at_pointer: Optional[str] = ...,
+        *,
+        flags: WriterFlags = ...,
+        at_pointer: str = ...,
     ) -> str: ...
     def patch(
         self,
@@ -99,7 +101,7 @@ def sax(
     source: Union[bytes, str, Path, BinaryIO],
     handler: SAXHandler,
     *,
-    flags: Optional[ReaderFlags] = ...,
+    flags: ReaderFlags = ...,
     window_size: int = ...,
     max_depth: int = ...,
 ) -> None: ...

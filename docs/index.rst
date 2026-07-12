@@ -178,7 +178,7 @@ if we wanted to allow comments and trailing commas, we could do:
     >>> from yyjson import Document, ReaderFlags, WriterFlags
     >>> doc = Document(
     ...   '{"hello": "world",} // This is a comment',
-    ...   ReaderFlags.ALLOW_COMMENTS | ReaderFlags.ALLOW_TRAILING_COMMAS
+    ...   flags=ReaderFlags.ALLOW_COMMENTS | ReaderFlags.ALLOW_TRAILING_COMMAS
     ... )
 
 
