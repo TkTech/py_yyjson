@@ -45,6 +45,35 @@ class ReaderFlags(enum.IntFlag):
     #: Like `NUMBERS_AS_DECIMAL`, but only for numbers that are too large to
     #: fit in a native type.
     BIG_NUMBERS_AS_DECIMAL = 0x80
+    #: Allow a UTF-8 BOM at the start of the input, as commonly produced by
+    #: Windows tooling.
+    ALLOW_BOM = 0x100
+    #: Allow extended number formats, such as hex (``0x7B``), a leading dot
+    #: (``.123``), or a leading plus sign.
+    ALLOW_EXT_NUMBER = 0x200
+    #: Allow extended escape sequences, such as ``\\a``, ``\\0``, ``\\x7B``.
+    ALLOW_EXT_ESCAPE = 0x400
+    #: Allow extended whitespace, such as ``\\v``, ``\\f``, or U+2028.
+    ALLOW_EXT_WHITESPACE = 0x800
+    #: Allow single-quoted strings, such as ``'hello'``.
+    ALLOW_SINGLE_QUOTED_STR = 0x1000
+    #: Allow unquoted object keys, such as ``{a: 1}``.
+    ALLOW_UNQUOTED_KEY = 0x2000
+    #: Parse `JSON5 <https://json5.org>`_: comments, trailing commas,
+    #: Inf/NaN, extended numbers, escapes and whitespace, single-quoted
+    #: strings, and unquoted keys. Combine with ``ALLOW_BOM`` if the input
+    #: may start with a BOM. Only the DOM readers (``Document``, ``loads``)
+    #: support JSON5; ``sax()`` ignores non-standard flags.
+    JSON5 = (
+        0x04  # ALLOW_TRAILING_COMMAS
+        | 0x08  # ALLOW_COMMENTS
+        | 0x10  # ALLOW_INF_AND_NAN
+        | 0x200  # ALLOW_EXT_NUMBER
+        | 0x400  # ALLOW_EXT_ESCAPE
+        | 0x800  # ALLOW_EXT_WHITESPACE
+        | 0x1000  # ALLOW_SINGLE_QUOTED_STR
+        | 0x2000  # ALLOW_UNQUOTED_KEY
+    )
 
 
 class WriterFlags(enum.IntFlag):
@@ -66,8 +95,33 @@ class WriterFlags(enum.IntFlag):
     ALLOW_INF_AND_NAN = 0x08
     #: Writes Infinity and NaN as `null` instead of raising an error.
     INF_AND_NAN_AS_NULL = 0x10
+    #: Write strings containing invalid unicode as-is instead of raising an
+    #: error. The output may not be valid JSON or UTF-8.
+    ALLOW_INVALID_UNICODE = 0x20
     #: Write a newline at the end of the JSON string.
     WRITE_NEWLINE_AT_END = 0x80
+    #: Write ``\\uXXXX`` escapes with lowercase hex digits.
+    LOWERCASE_HEX = 0x100
+    #: Write floating-point numbers as single-precision (``double`` is cast
+    #: to ``float`` first): shorter output, may lose precision. Ignored when
+    #: combined with :meth:`fp_to_fixed`.
+    FP_TO_FLOAT = 0x08000000
+
+    @staticmethod
+    def fp_to_fixed(precision):
+        """
+        A flag to write floating-point numbers using fixed-point notation
+        with the given number of decimals (1-15), like
+        ``Number.prototype.toFixed(precision)`` but with trailing zeros
+        removed. Combine it with other flags, e.g.
+        ``dumps(flags=WriterFlags.PRETTY | WriterFlags.fp_to_fixed(3))``.
+
+        :param precision: Number of decimal places, 1 through 15.
+        :returns: The flag value as an ``int``.
+        """
+        if not 1 <= precision <= 15:
+            raise ValueError("precision must be between 1 and 15")
+        return precision << 28
 
 
 class SAXHandler:

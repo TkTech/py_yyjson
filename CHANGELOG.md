@@ -22,6 +22,13 @@
 - `Document.bytes_read`: the number of input bytes consumed by the parse
   (useful with `ReaderFlags.STOP_WHEN_DONE`, e.g. for NDJSON).
 - Type annotations: a `py.typed` marker and `.pyi` stubs for the C extension.
+- New `ReaderFlags`: `JSON5` (full JSON5 parsing), `ALLOW_BOM`, and the
+  individual `ALLOW_EXT_NUMBER`, `ALLOW_EXT_ESCAPE`, `ALLOW_EXT_WHITESPACE`,
+  `ALLOW_SINGLE_QUOTED_STR`, and `ALLOW_UNQUOTED_KEY` extensions. JSON5 is
+  supported by the DOM readers only; `sax()` ignores non-standard flags.
+- New `WriterFlags`: `FP_TO_FLOAT` and `WriterFlags.fp_to_fixed(precision)`
+  for controlling floating-point output, `LOWERCASE_HEX` for lowercase
+  `\uXXXX` escapes, and `ALLOW_INVALID_UNICODE`.
 - Python 3.14 and PyPy 3.11 wheels.
 
 ### Changed

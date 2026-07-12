@@ -30,6 +30,13 @@ class ReaderFlags(enum.IntFlag):
     NUMBERS_AS_DECIMAL = 0x20
     BIGNUM_AS_RAW = 0x80
     BIG_NUMBERS_AS_DECIMAL = 0x80
+    ALLOW_BOM = 0x100
+    ALLOW_EXT_NUMBER = 0x200
+    ALLOW_EXT_ESCAPE = 0x400
+    ALLOW_EXT_WHITESPACE = 0x800
+    ALLOW_SINGLE_QUOTED_STR = 0x1000
+    ALLOW_UNQUOTED_KEY = 0x2000
+    JSON5 = 0x3E1C
 
 class WriterFlags(enum.IntFlag):
     PRETTY = 0x01
@@ -38,7 +45,12 @@ class WriterFlags(enum.IntFlag):
     ESCAPE_SLASHES = 0x04
     ALLOW_INF_AND_NAN = 0x08
     INF_AND_NAN_AS_NULL = 0x10
+    ALLOW_INVALID_UNICODE = 0x20
     WRITE_NEWLINE_AT_END = 0x80
+    LOWERCASE_HEX = 0x100
+    FP_TO_FLOAT = 0x08000000
+    @staticmethod
+    def fp_to_fixed(precision: int) -> int: ...
 
 # The constructor either parses (str/bytes/Path) or builds from a Python
 # object; with a ``default`` callback the build side can accept anything, so
