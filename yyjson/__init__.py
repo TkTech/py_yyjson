@@ -1,4 +1,13 @@
-__all__ = ["Document", "ReaderFlags", "WriterFlags", "sax", "loads", "load"]
+__all__ = [
+    "Document",
+    "ReaderFlags",
+    "WriterFlags",
+    "sax",
+    "loads",
+    "load",
+    "dumps",
+    "dump",
+]
 
 import enum
 
@@ -60,12 +69,43 @@ class WriterFlags(enum.IntFlag):
 
 
 def load(fp):
+    """
+    Parse a JSON document from an open file-like object and return the
+    equivalent Python object.
+
+    The entire stream is read into memory before parsing. To process inputs
+    too large for that, or to pull just a few values out of a huge document,
+    see :func:`sax`.
+
+    :param fp: An open file-like object with a ``read()`` method.
+    :returns: The equivalent Python object.
+    """
     return loads(fp.read())
 
 
 def dumps(obj, *, default=None):
+    """
+    Serialize a Python object to a JSON ``str``.
+
+    :param obj: The Python object to serialize.
+    :param default: A function called to convert objects that are not
+                    JSON serializable. Should return a JSON serializable
+                    version of the object or raise a TypeError.
+    :type default: callable, optional
+    :returns: The serialized JSON document as a ``str``.
+    """
     return Document.from_obj(obj, default=default).dumps()
 
 
 def dump(obj, fp, *, default=None):
+    """
+    Serialize a Python object as JSON to an open file-like object.
+
+    :param obj: The Python object to serialize.
+    :param fp: An open file-like object with a ``write()`` method.
+    :param default: A function called to convert objects that are not
+                    JSON serializable. Should return a JSON serializable
+                    version of the object or raise a TypeError.
+    :type default: callable, optional
+    """
     fp.write(Document.from_obj(obj, default=default).dumps())

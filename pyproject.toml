@@ -39,6 +39,7 @@ test = ["pytest"]
 release = [
     "sphinx",
     "sphinx-copybutton",
+    "myst-parser",
     "ghp-import",
     "bumpversion",
     "black",

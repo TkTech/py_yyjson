@@ -34,6 +34,7 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     "sphinx_copybutton",
+    "myst_parser",
 ]
 
 intersphinx_mapping = {
