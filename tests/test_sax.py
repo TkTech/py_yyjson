@@ -239,3 +239,67 @@ def test_sax_path(tmp_path):
     p = tmp_path / "doc.json"
     p.write_bytes(b'{"from":"path","nums":[1,2,3]}')
     assert sax_to_obj(p) == {"from": "path", "nums": [1, 2, 3]}
+
+
+@pytest.mark.parametrize("doc", DOCUMENTS)
+def test_sax_matches_dom_buffer_sources(doc):
+    """bytearray and memoryview sources parse zero-copy via the buffer
+    protocol and match the DOM parse."""
+    expected = yyjson.Document(doc).as_obj
+    data = doc.encode("utf-8")
+    assert sax_to_obj(bytearray(data)) == expected
+    assert sax_to_obj(memoryview(data)) == expected
+    # a slice of a larger buffer works too
+    padded = memoryview(b"     " + data + b"     ")[5:5 + len(data)]
+    assert sax_to_obj(padded) == expected
+
+
+def test_sax_mmap_source(tmp_path):
+    import mmap
+
+    p = tmp_path / "doc.json"
+    p.write_bytes(b'{"via": "mmap", "n": [1, 2, 3]}')
+    with open(p, "rb") as fp:
+        with mmap.mmap(fp.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+            assert sax_to_obj(mm) == {"via": "mmap", "n": [1, 2, 3]}
+
+
+def test_sax_bytearray_resize_during_parse_is_safe():
+    """The source buffer is pinned while parsing: a handler that resizes the
+    bytearray gets a BufferError instead of invalidating the parser's view
+    of the memory (previously a use-after-free)."""
+    source = bytearray(b'{"a": 1, "b": 2, "c": 3}')
+
+    class Resizer:
+        def key(self, value):
+            source.clear()  # would realloc/free the buffer
+
+    with pytest.raises(BufferError):
+        yyjson.sax(source, Resizer())
+
+    # the buffer survived intact and can be parsed again afterwards
+    assert bytes(source) == b'{"a": 1, "b": 2, "c": 3}'
+    assert sax_to_obj(source) == {"a": 1, "b": 2, "c": 3}
+
+
+def test_sax_non_contiguous_buffer_rejected():
+    data = memoryview(b"[1, 2, 3, 4, 5, 6]")[::2]  # non-contiguous view
+    with pytest.raises((BufferError, TypeError)):
+        yyjson.sax(data, object())
+
+
+def test_sax_handler_base_class():
+    """Subclassing SAXHandler and overriding a subset works; events left as
+    None on the base are skipped exactly like missing methods."""
+
+    class KeyCollector(yyjson.SAXHandler):
+        def __init__(self):
+            self.keys = []
+
+        def key(self, value):
+            self.keys.append(value)
+
+    collector = KeyCollector()
+    yyjson.sax('{"a": 1, "b": {"c": [true, null]}}', collector)
+    assert collector.keys == ["a", "b", "c"]
+    assert collector.obj_begin is None  # inherited default, skipped by C

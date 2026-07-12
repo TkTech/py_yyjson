@@ -244,8 +244,12 @@ PyDoc_STRVAR(
     "a sliding window (``window_size``) plus the nesting depth, independent of\n"
     "the total input size, so inputs far larger than RAM can be processed.\n"
     "\n"
-    "``source`` may be ``bytes``, ``str``, a binary file-like object (with\n"
-    "``readinto`` or ``read``), or a ``pathlib.Path`` to open and stream.\n"
+    "``source`` may be ``str``, any object exporting a contiguous byte buffer\n"
+    "(``bytes``, ``bytearray``, ``memoryview``, ``mmap``, ...), a binary\n"
+    "file-like object (with ``readinto`` or ``read``), or a ``pathlib.Path``\n"
+    "to open and stream. Buffer sources are read zero-copy and are pinned for\n"
+    "the duration of the parse: resizing one from a handler callback raises\n"
+    "``BufferError``.\n"
     "\n"
     "``handler`` is any object; the following methods are called if present\n"
     "(each is optional):\n"
@@ -319,25 +323,34 @@ static PyObject *py_sax(PyObject *self, PyObject *args, PyObject *kwds) {
     if (max_depth > 0) opts.max_depth = (size_t)max_depth;
     memset(&err, 0, sizeof(err));
 
-    /* in-memory: bytes / bytearray / str */
-    if (PyBytes_Check(source) || PyByteArray_Check(source) ||
-        PyUnicode_Check(source)) {
+    /* in-memory: str */
+    if (PyUnicode_Check(source)) {
         mem_src ms;
         Py_ssize_t len = 0;
         ms.pos = 0;
-        if (PyBytes_Check(source)) {
-            ms.dat = PyBytes_AS_STRING(source);
-            len = PyBytes_GET_SIZE(source);
-        } else if (PyByteArray_Check(source)) {
-            ms.dat = PyByteArray_AS_STRING(source);
-            len = PyByteArray_GET_SIZE(source);
-        } else {
-            ms.dat = PyUnicode_AsUTF8AndSize(source, &len);
-            if (!ms.dat) goto cleanup;
-        }
+        ms.dat = PyUnicode_AsUTF8AndSize(source, &len);
+        if (!ms.dat) goto cleanup;
         ms.len = (size_t)len;
         ok = yyjson_sax_read(mem_source, &ms, &h, &pc, flags, &opts,
                              &PyMem_Allocator, &err);
+        handled = 1;
+    }
+
+    /* in-memory: anything exporting a contiguous byte buffer (bytes,
+       bytearray, memoryview, mmap, ...). Holding the buffer export for the
+       whole parse pins the memory: a handler callback that tries to resize
+       the source (e.g. a bytearray) gets a BufferError from Python instead
+       of leaving our pointer dangling. */
+    if (!handled && PyObject_CheckBuffer(source)) {
+        Py_buffer view;
+        mem_src ms;
+        if (PyObject_GetBuffer(source, &view, PyBUF_SIMPLE) < 0) goto cleanup;
+        ms.dat = (const char *)view.buf;
+        ms.len = (size_t)view.len;
+        ms.pos = 0;
+        ok = yyjson_sax_read(mem_source, &ms, &h, &pc, flags, &opts,
+                             &PyMem_Allocator, &err);
+        PyBuffer_Release(&view);
         handled = 1;
     }
 
@@ -359,8 +372,8 @@ static PyObject *py_sax(PyObject *self, PyObject *args, PyObject *kwds) {
         ps.read = ps.readinto ? NULL : get_method(source, "read");
         if (!ps.readinto && !ps.read) {
             PyErr_Format(PyExc_TypeError,
-                         "sax() source must be bytes, str, a binary file-like "
-                         "object, or a Path, not '%s'",
+                         "sax() source must be str, a bytes-like object, a "
+                         "binary file-like object, or a Path, not '%s'",
                          Py_TYPE(source)->tp_name);
             goto cleanup;
         }

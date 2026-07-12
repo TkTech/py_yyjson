@@ -1,24 +1,25 @@
 import enum
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, BinaryIO, Optional, List, Dict, Protocol, Union, Callable
+from typing import Any, BinaryIO, Optional, List, Dict, Union, Callable
 
-class SAXHandler(Protocol):
+class SAXHandler:
     """
-    Structural typing for a :func:`sax` handler. Every method is optional; only
-    those present are called. A method may return ``False`` to stop parsing
-    early.
+    Optional base class for :func:`sax` handlers. Subclass it and override
+    any subset of the event attributes with methods; events left as ``None``
+    are skipped. Subclassing is not required - :func:`sax` accepts any
+    object and calls each event method only if present.
     """
 
-    def obj_begin(self) -> Any: ...
-    def obj_end(self, count: int) -> Any: ...
-    def arr_begin(self) -> Any: ...
-    def arr_end(self, count: int) -> Any: ...
-    def key(self, value: str) -> Any: ...
-    def string(self, value: str) -> Any: ...
-    def number(self, value: Any) -> Any: ...
-    def boolean(self, value: bool) -> Any: ...
-    def null(self) -> Any: ...
+    obj_begin: Optional[Callable[[], Any]]
+    obj_end: Optional[Callable[[int], Any]]
+    arr_begin: Optional[Callable[[], Any]]
+    arr_end: Optional[Callable[[int], Any]]
+    key: Optional[Callable[[str], Any]]
+    string: Optional[Callable[[str], Any]]
+    number: Optional[Callable[[Any], Any]]
+    boolean: Optional[Callable[[bool], Any]]
+    null: Optional[Callable[[], Any]]
 
 class ReaderFlags(enum.IntFlag):
     STOP_WHEN_DONE = 0x02
@@ -98,8 +99,8 @@ def dump(
     obj: Any, fp: Any, *, default: Optional[Callable[[Any], Any]] = None
 ) -> None: ...
 def sax(
-    source: Union[bytes, str, Path, BinaryIO],
-    handler: SAXHandler,
+    source: Union[bytes, bytearray, memoryview, str, Path, BinaryIO],
+    handler: object,
     *,
     flags: ReaderFlags = ...,
     window_size: int = ...,

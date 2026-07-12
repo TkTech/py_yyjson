@@ -240,7 +240,8 @@ Some documents are too large to hold in memory, and sometimes you only need
 a few values out of a huge file. :func:`yyjson.sax` parses JSON as a stream
 of events with bounded memory: peak usage is a fixed sliding window
 (``window_size``, 256 KiB by default) plus the nesting depth, no matter how
-large the input is. The source can be a ``str``, ``bytes``, a
+large the input is. The source can be a ``str``, any bytes-like object
+(``bytes``, ``bytearray``, ``memoryview``, ``mmap``, ...), a
 ``pathlib.Path``, or a binary file-like object.
 
 The handler is any object; each of the following methods is called if it
@@ -260,8 +261,8 @@ For example, collecting every key used anywhere in a document:
 
 .. code-block:: python
 
-    >>> from yyjson import sax
-    >>> class KeyCollector:
+    >>> from yyjson import sax, SAXHandler
+    >>> class KeyCollector(SAXHandler):
     ...     def __init__(self):
     ...         self.keys = set()
     ...     def key(self, value):

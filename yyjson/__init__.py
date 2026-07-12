@@ -2,6 +2,7 @@ __all__ = [
     "Document",
     "ReaderFlags",
     "WriterFlags",
+    "SAXHandler",
     "sax",
     "loads",
     "load",
@@ -10,6 +11,7 @@ __all__ = [
 ]
 
 import enum
+from typing import Any, Callable, Optional
 
 from cyyjson import Document, sax, loads
 
@@ -66,6 +68,48 @@ class WriterFlags(enum.IntFlag):
     INF_AND_NAN_AS_NULL = 0x10
     #: Write a newline at the end of the JSON string.
     WRITE_NEWLINE_AT_END = 0x80
+
+
+class SAXHandler:
+    """
+    Optional base class for :func:`sax` handlers.
+
+    :func:`sax` accepts *any* object as a handler and calls each event method
+    only if it exists, so subclassing this is never required - but doing so
+    and overriding just the events you care about gives you IDE completion
+    and static type checking for free:
+
+    .. code-block:: python
+
+        class KeyCollector(SAXHandler):
+            def __init__(self):
+                self.keys = []
+
+            def key(self, value):
+                self.keys.append(value)
+
+    Unimplemented events are skipped entirely. A handler method may return
+    ``False`` to stop parsing early.
+    """
+
+    #: Called when an object opens (``{``).
+    obj_begin: Optional[Callable[[], Any]] = None
+    #: Called when an object closes (``}``), with its member count.
+    obj_end: Optional[Callable[[int], Any]] = None
+    #: Called when an array opens (``[``).
+    arr_begin: Optional[Callable[[], Any]] = None
+    #: Called when an array closes (``]``), with its element count.
+    arr_end: Optional[Callable[[int], Any]] = None
+    #: Called for each object member key.
+    key: Optional[Callable[[str], Any]] = None
+    #: Called for each string value.
+    string: Optional[Callable[[str], Any]] = None
+    #: Called for each number value (``int``, ``float``, or ``Decimal``).
+    number: Optional[Callable[[Any], Any]] = None
+    #: Called for each boolean value.
+    boolean: Optional[Callable[[bool], Any]] = None
+    #: Called for each ``null``.
+    null: Optional[Callable[[], Any]] = None
 
 
 def load(fp):
