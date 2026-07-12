@@ -4,13 +4,6 @@
 #include "decimal.h"
 #include "pathlib.h"
 
-#define ENSURE_MUTABLE(self)                                   \
-  if (self->i_doc) {                                           \
-    self->m_doc = yyjson_doc_mut_copy(self->i_doc, self->alc); \
-    yyjson_doc_free(self->i_doc);                              \
-    self->i_doc = NULL;                                        \
-  }
-
 static PyObject *mut_element_to_primitive(yyjson_mut_val *val);
 static PyObject *element_to_primitive(yyjson_val *val, int depth);
 
@@ -1371,10 +1364,6 @@ PyDoc_STRVAR(
     "``use_merge_patch=True`` to\n"
     "use JSON Merge-Patch instead.\n"
     "\n"
-    ".. note::\n"
-    "\n"
-    "    This method will automatically thaw a frozen ``Document``.\n"
-    "\n"
     ":param patch: The ``Document`` to patch with.\n"
     ":type patch: ``Document``\n"
     ":param at_pointer: The (optional) JSON Pointer (RFC 6901) to patch at,\n"
@@ -1434,6 +1423,7 @@ static PyObject *Document_patch(
   }
 
   DocumentObject *patch_doc = (DocumentObject *)patch;
+  yyjson_doc *tmp_patch = NULL;
 
   // If a pointer was provided, that's the value we're going to be patching,
   // otherwise we use the root of the document.
@@ -1460,16 +1450,17 @@ static PyObject *Document_patch(
       }
     }
 
-    // If the patch is a mutable document, we need to freeze it before we can
-    // use it with the immutable merge_patch API.
-    if (patch_doc->m_doc) {
-      patch_doc->i_doc =
-          yyjson_mut_doc_imut_copy(patch_doc->m_doc, patch_doc->alc);
-      yyjson_mut_doc_free(patch_doc->m_doc);
-      patch_doc->m_doc = NULL;
+    yyjson_val *patch_val = NULL;
+    if (patch_doc->i_doc) {
+      patch_val = yyjson_doc_get_root(patch_doc->i_doc);
+    } else if (patch_doc->m_doc) {
+      tmp_patch = yyjson_mut_doc_imut_copy(patch_doc->m_doc, self->alc);
+      if (!tmp_patch) {
+        PyErr_NoMemory();
+        goto error;
+      }
+      patch_val = yyjson_doc_get_root(tmp_patch);
     }
-
-    yyjson_val *patch_val = yyjson_doc_get_root(patch_doc->i_doc);
     if (!patch_val) {
       PyErr_SetString(PyExc_ValueError, "Patch document has no root value.");
       goto error;
@@ -1523,9 +1514,19 @@ static PyObject *Document_patch(
       }
     }
 
-    ENSURE_MUTABLE(patch_doc);
-
-    yyjson_mut_val *patch_val = yyjson_mut_doc_get_root(patch_doc->m_doc);
+    yyjson_mut_val *patch_val = NULL;
+    if (patch_doc->m_doc) {
+      patch_val = yyjson_mut_doc_get_root(patch_doc->m_doc);
+    } else if (patch_doc->i_doc) {
+      yyjson_val *iroot = yyjson_doc_get_root(patch_doc->i_doc);
+      if (iroot) {
+        patch_val = yyjson_val_mut_copy(obj->m_doc, iroot);
+        if (!patch_val) {
+          PyErr_NoMemory();
+          goto error;
+        }
+      }
+    }
     if (!patch_val) {
       PyErr_SetString(PyExc_ValueError, "Patch document has no root value.");
       goto error;
@@ -1559,10 +1560,12 @@ static PyObject *Document_patch(
   }
 
   Py_XDECREF(patch_owned);
+  if (tmp_patch) yyjson_doc_free(tmp_patch);
   return (PyObject *)obj;
 
 error:
   Py_XDECREF(patch_owned);
+  if (tmp_patch) yyjson_doc_free(tmp_patch);
   Py_DECREF(obj);
   return NULL;
 }

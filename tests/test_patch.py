@@ -113,3 +113,47 @@ def test_json_patch_samples():
 
         assert modified.as_obj == test["expected"]
 
+
+
+def test_patch_does_not_mutate_argument():
+    """Applying a patch never converts the caller's documents between
+    representations (previously the patch argument was frozen/thawed in
+    place to match the target)."""
+    # thawed patch onto a frozen target
+    target = Document('{"a": 1}')
+    patch = Document([{"op": "add", "path": "/b", "value": 2}])
+    assert patch.is_thawed is True
+    assert target.patch(patch).as_obj == {"a": 1, "b": 2}
+    assert patch.is_thawed is True
+    assert target.is_thawed is False
+
+    # frozen patch onto a thawed target
+    patch2 = Document('[{"op": "add", "path": "/b", "value": 2}]')
+    target2 = Document({"a": 1})
+    assert patch2.is_thawed is False
+    assert target2.patch(patch2).as_obj == {"a": 1, "b": 2}
+    assert patch2.is_thawed is False
+    assert target2.is_thawed is True
+
+    # one patch object works against all target representations, repeatedly
+    for _ in range(3):
+        for make_target in (lambda: Document('{"a": 1}'),
+                            lambda: Document({"a": 1})):
+            for p in (patch, patch2):
+                assert make_target().patch(p).as_obj == {"a": 1, "b": 2}
+    assert patch.is_thawed is True
+    assert patch2.is_thawed is False
+
+
+def test_merge_patch_does_not_mutate_argument():
+    # thawed patch onto a frozen target
+    patch = Document({"b": 2})
+    target = Document('{"a": 1}')
+    assert target.patch(patch, use_merge_patch=True).as_obj == {"a": 1, "b": 2}
+    assert patch.is_thawed is True
+
+    # frozen patch onto a thawed target
+    patch2 = Document('{"b": 2}')
+    target2 = Document({"a": 1})
+    assert target2.patch(patch2, use_merge_patch=True).as_obj == {"a": 1, "b": 2}
+    assert patch2.is_thawed is False
