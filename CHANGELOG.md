@@ -40,6 +40,9 @@
   `RecursionError` instead of risking a C stack overflow.
 - `flags` and `default` arguments are keyword-only. (They always were at
   runtime; the documentation and type stubs now agree.)
+- `Document.freeze()` and `Document.thaw()` return the document itself
+  (previously `None`), allowing chaining such as
+  `Document(obj).freeze().dumps()`.
 - Wheels are no longer built against the limited API (required by the new
   ASCII fast path), and EOL PyPy 3.9/3.10 wheels are no longer produced.
 - The vendored yyjson was upgraded to 0.12.0.

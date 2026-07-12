@@ -1153,6 +1153,8 @@ PyDoc_STRVAR(
     "    ``Document``, such as :func:`patch()`, it will be automatically "
     "thawed.\n"
     "    This is an advanced function and can usually be ignored.\n"
+    "\n"
+    ":returns: This ``Document``, to allow chaining.\n"
 );
 static PyObject *Document_freeze(DocumentObject *self) {
   if (self->m_doc) {
@@ -1165,7 +1167,8 @@ static PyObject *Document_freeze(DocumentObject *self) {
     self->m_doc = NULL;
   }
 
-  Py_RETURN_NONE;
+  Py_INCREF(self);
+  return (PyObject *)self;
 }
 
 PyDoc_STRVAR(
@@ -1179,6 +1182,8 @@ PyDoc_STRVAR(
     ".. note::\n"
     "\n"
     "    This is an advanced function and can usually be ignored.\n"
+    "\n"
+    ":returns: This ``Document``, to allow chaining.\n"
 );
 static PyObject *Document_thaw(DocumentObject *self) {
   if (self->i_doc) {
@@ -1191,7 +1196,8 @@ static PyObject *Document_thaw(DocumentObject *self) {
     self->i_doc = NULL;
   }
 
-  Py_RETURN_NONE;
+  Py_INCREF(self);
+  return (PyObject *)self;
 }
 
 PyDoc_STRVAR(

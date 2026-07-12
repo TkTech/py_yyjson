@@ -457,3 +457,14 @@ def test_thawed_deep_nesting_raises():
     doc = Document(deep)
     with pytest.raises(RecursionError):
         doc.as_obj
+
+
+def test_freeze_thaw_chaining():
+    doc = Document({"a": 1})
+    assert doc.freeze() is doc
+    assert doc.is_thawed is False
+    assert doc.thaw() is doc
+    assert doc.is_thawed is True
+    # already in the target state: still returns self
+    assert doc.thaw() is doc
+    assert Document({"a": 1}).freeze().dumps() == '{"a":1}'
