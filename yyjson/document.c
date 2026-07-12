@@ -82,6 +82,22 @@ FILE *fopen_path(PyObject *path) {
 }
 
 /*
+ * Raise ValueError for a parse failure, locating line/column when the input
+ * bytes are available (pass NULL otherwise, e.g. file reads that no longer
+ * hold the data).
+ */
+static void raise_parse_error(const yyjson_read_err *err,
+                              const char *dat, size_t len) {
+  size_t line, col, chr;
+  if (dat != NULL && yyjson_locate_pos(dat, len, err->pos, &line, &col, &chr)) {
+    PyErr_Format(PyExc_ValueError, "%s at line %zu, column %zu (byte %zu)",
+                 err->msg, line, col, err->pos);
+  } else {
+    PyErr_Format(PyExc_ValueError, "%s at byte %zu", err->msg, err->pos);
+  }
+}
+
+/*
  * Object keys repeat heavily in real JSON (every record in an array of objects
  * shares the same key set), and re-decoding and re-hashing an identical
  * PyUnicode for each occurrence dominates conversion time. This direct-mapped
@@ -599,8 +615,9 @@ static int document_read_stream(
   self->i_doc =
       yyjson_read_opts(buf, len, flag | YYJSON_READ_INSITU, self->alc, &err);
   if (!self->i_doc) {
+    // insitu parsing may have rewritten decoded spans; line/col approximate
+    raise_parse_error(&err, buf, len);
     self->alc->free(self->alc->ctx, buf);
-    PyErr_SetString(PyExc_ValueError, err.msg);
     return -1;
   }
   self->i_doc->str_pool = buf;
@@ -630,22 +647,26 @@ static yyjson_doc *parse_content(
 ) {
   yyjson_read_err err;
   yyjson_doc *doc;
+  const char *dat = NULL;
+  size_t dat_len = 0;
 
   *not_text = 0;
 
   if (yyjson_likely(PyBytes_Check(content))) {
     // Discarding const is safe as long as we never expose the insitu flag.
-    doc = yyjson_read_opts((char *)PyBytes_AS_STRING(content),
-                           (size_t)PyBytes_GET_SIZE(content), flag, alc, &err);
+    dat = PyBytes_AS_STRING(content);
+    dat_len = (size_t)PyBytes_GET_SIZE(content);
+    doc = yyjson_read_opts((char *)dat, dat_len, flag, alc, &err);
   } else if (yyjson_likely(PyUnicode_Check(content))) {
     Py_ssize_t len;
-    const char *utf8 = PyUnicode_AsUTF8AndSize(content, &len);
-    if (utf8 == NULL) return NULL;
-    doc = yyjson_read_opts((char *)utf8, (size_t)len, flag, alc, &err);
+    dat = PyUnicode_AsUTF8AndSize(content, &len);
+    if (dat == NULL) return NULL;
+    dat_len = (size_t)len;
+    doc = yyjson_read_opts((char *)dat, dat_len, flag, alc, &err);
   } else if (PyByteArray_Check(content)) {
-    doc = yyjson_read_opts(PyByteArray_AS_STRING(content),
-                           (size_t)PyByteArray_GET_SIZE(content), flag, alc,
-                           &err);
+    dat = PyByteArray_AS_STRING(content);
+    dat_len = (size_t)PyByteArray_GET_SIZE(content);
+    doc = yyjson_read_opts((char *)dat, dat_len, flag, alc, &err);
   } else {
     int is_path;
     FILE *fp;
@@ -662,7 +683,7 @@ static yyjson_doc *parse_content(
   }
 
   if (doc == NULL) {
-    PyErr_SetString(PyExc_ValueError, err.msg);
+    raise_parse_error(&err, dat, dat_len);
   }
   return doc;
 }

@@ -468,3 +468,25 @@ def test_freeze_thaw_chaining():
     # already in the target state: still returns self
     assert doc.thaw() is doc
     assert Document({"a": 1}).freeze().dumps() == '{"a":1}'
+
+
+def test_parse_errors_include_position():
+    """Parse errors report line/column/byte for in-memory and stream inputs,
+    and at least the byte offset for file paths."""
+    import io
+    from yyjson import loads
+
+    bad = '{\n  "a": 1,\n    bad\n}'
+    with pytest.raises(ValueError, match=r"at line 3, column \d+ \(byte \d+\)"):
+        Document(bad)
+    with pytest.raises(ValueError, match=r"at line 3, column \d+"):
+        loads(bad.encode())
+    with pytest.raises(ValueError, match=r"at line 3, column \d+"):
+        Document(io.BytesIO(bad.encode()))
+
+
+def test_parse_error_from_path_has_byte_offset(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_bytes(b'{"a": 1, bad}')
+    with pytest.raises(ValueError, match=r"at byte \d+"):
+        Document(p)

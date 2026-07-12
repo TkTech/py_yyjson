@@ -40,6 +40,9 @@
 - Parsing from file-like objects and `Path`s now reads into a single owned
   buffer parsed in place: roughly 20% faster with roughly 20% lower peak
   memory.
+- Parse errors from `Document()` and `loads()` now include the position:
+  line, column and byte offset for in-memory and stream inputs, byte offset
+  for file paths.
 - Dictionary keys must be strings when serializing; other key types now raise
   `TypeError` instead of producing undefined behaviour.
 - Tuples are serialized as JSON arrays.
