@@ -438,9 +438,16 @@ static inline yyjson_mut_val *mut_primitive_to_element(
         // representation.
         PyErr_Clear();  // Erase the OverflowError
         PyObject *str_repr = PyObject_Str(obj);
+        if (str_repr == NULL) return NULL;
         Py_ssize_t str_len;
         const char *str = PyUnicode_AsUTF8AndSize(str_repr, &str_len);
-        return yyjson_mut_rawncpy(doc, str, str_len);
+        if (str == NULL) {
+          Py_DECREF(str_repr);
+          return NULL;
+        }
+        yyjson_mut_val *val = yyjson_mut_rawncpy(doc, str, str_len);
+        Py_DECREF(str_repr);
+        return val;
       } else {
         return yyjson_mut_uint(doc, unum);
       }
