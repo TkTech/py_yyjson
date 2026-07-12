@@ -10,6 +10,14 @@ def test_big_numbers():
     The test set is from:
         https://blog.trl.sn/blog/what-is-a-json-number/#python-3-8-1
     """
+    # The 4302-digit value below trips the int<->str conversion DoS guard
+    # (default 4300 digits) on interpreters whose decimal is pure Python
+    # (PyPy), since _pydecimal round-trips the coefficient through int().
+    # CPython's C _decimal is exempt. Guarded: CPython < 3.9.14/3.10.7
+    # lacks the function.
+    if hasattr(sys, "set_int_max_str_digits"):
+        sys.set_int_max_str_digits(5000)
+
     test_numbers = [
         "10",
         "1000000000",
