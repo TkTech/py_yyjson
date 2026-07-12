@@ -888,8 +888,18 @@ static int Document_init(DocumentObject *self, PyObject *args, PyObject *kwds) {
     return -1;
   }
 
+  if (self->i_doc) {
+    yyjson_doc_free(self->i_doc);
+    self->i_doc = NULL;
+  }
+  if (self->m_doc) {
+    yyjson_mut_doc_free(self->m_doc);
+    self->m_doc = NULL;
+  }
+  Py_CLEAR(self->default_func);
+
   self->default_func = default_func == Py_None ? NULL : default_func;
-  Py_XINCREF(default_func);
+  Py_XINCREF(self->default_func);
 
   // A str/bytes/Path is parsed as JSON; anything else is built from as a
   // Python object.
