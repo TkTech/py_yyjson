@@ -603,18 +603,59 @@ static int document_read_stream(
     }
   }
 
+  /* If the stream is seekable, learn the remaining size and presize the
+     buffer, so the whole stream is drained in one readinto() with no growth
+     reallocs (the seek/tell protocol respects the object's own buffering,
+     unlike fd-level sizing). A short or stale answer is harmless: the drain
+     loop below still reads to EOF and grows if needed. Only for readinto
+     streams: text-mode tell() returns opaque cookies, not byte offsets. */
+  if (readinto) {
+    PyObject *r = PyObject_CallMethod(fileobj, "seekable", NULL);
+    int seekable = r ? PyObject_IsTrue(r) : 0;
+    Py_XDECREF(r);
+    if (seekable > 0) {
+      PyObject *pos_o = PyObject_CallMethod(fileobj, "tell", NULL);
+      PyObject *end_o =
+          pos_o ? PyObject_CallMethod(fileobj, "seek", "ii", 0, 2) : NULL;
+      if (end_o) {
+        /* we moved the position; failing to restore it must propagate, or
+           the drain below would silently read nothing from the tail */
+        PyObject *back_o = PyObject_CallMethod(fileobj, "seek", "Oi", pos_o, 0);
+        if (!back_o) {
+          Py_DECREF(end_o);
+          Py_DECREF(pos_o);
+          Py_XDECREF(readinto);
+          return -1;
+        }
+        Py_DECREF(back_o);
+        {
+          Py_ssize_t pos = PyNumber_AsSsize_t(pos_o, NULL);
+          Py_ssize_t end = PyNumber_AsSsize_t(end_o, NULL);
+          if (!PyErr_Occurred() && end > pos) {
+            size_t hint = (size_t)(end - pos) + CHUNK + YYJSON_PADDING_SIZE;
+            buf = (char *)self->alc->malloc(self->alc->ctx, hint);
+            if (buf) cap = hint;
+          }
+        }
+      }
+      Py_XDECREF(end_o);
+      Py_XDECREF(pos_o);
+    }
+    if (PyErr_Occurred()) PyErr_Clear();
+  }
+
   for (;;) {
     size_t space;
-    if (len + CHUNK + 1 > cap) {
+    if (len + CHUNK + YYJSON_PADDING_SIZE > cap) {
       size_t ncap = cap ? cap * 2 : CHUNK * 2;
       char *nb;
-      while (len + CHUNK + 1 > ncap) ncap *= 2;
+      while (len + CHUNK + YYJSON_PADDING_SIZE > ncap) ncap *= 2;
       nb = (char *)self->alc->realloc(self->alc->ctx, buf, cap, ncap);
       if (!nb) { PyErr_NoMemory(); goto error; }
       buf = nb;
       cap = ncap;
     }
-    space = cap - len - 1;
+    space = cap - len - YYJSON_PADDING_SIZE;
 
     if (readinto) {
       PyObject *mv = PyMemoryView_FromMemory(buf + len, (Py_ssize_t)space,
@@ -664,13 +705,25 @@ static int document_read_stream(
     return -1;
   }
 
-  /* non-insitu read makes its own padded copy, so `buf` can be freed after */
-  self->i_doc = yyjson_read_opts(buf, len, flag, self->alc, &err);
-  self->alc->free(self->alc->ctx, buf);
+  /* Parse in place and hand `buf` to the document via `str_pool`, so it is
+     freed by yyjson_doc_free. This skips the full copy a non-insitu read
+     would make (the same pattern yyjson_read_fp uses). Shrink first: the
+     buffer lives as long as the document, and growth doubling can leave up
+     to 2x the input in unused capacity. */
+  if (cap > len + YYJSON_PADDING_SIZE) {
+    char *nb = (char *)self->alc->realloc(self->alc->ctx, buf, cap,
+                                          len + YYJSON_PADDING_SIZE);
+    if (nb) buf = nb; /* shrink failure is harmless; keep the larger buffer */
+  }
+  memset(buf + len, 0, YYJSON_PADDING_SIZE);
+  self->i_doc =
+      yyjson_read_opts(buf, len, flag | YYJSON_READ_INSITU, self->alc, &err);
   if (!self->i_doc) {
+    self->alc->free(self->alc->ctx, buf);
     PyErr_SetString(PyExc_ValueError, err.msg);
     return -1;
   }
+  self->i_doc->str_pool = buf;
   return 0;
 
 error:
