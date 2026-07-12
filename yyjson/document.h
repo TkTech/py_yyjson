@@ -23,6 +23,9 @@ typedef struct {
 
 extern PyTypeObject DocumentType;
 
+/** Module-level functions defined in document.c (e.g. ``loads``). */
+extern PyMethodDef yyjson_doc_methods[];
+
 /**
  * Convert a UTF-8 string of `len` bytes into a Python ``str``, using a fast
  * path for pure-ASCII input. Shared with the streaming (SAX) reader.

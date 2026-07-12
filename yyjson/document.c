@@ -17,18 +17,20 @@ static PyObject *pathlib = NULL;
 static PyObject *path = NULL;
 
 /**
- * Count the number of UTF-8 characters in the given string.
+ * Return non-zero if the buffer is pure ASCII. Only the yes/no answer is needed
+ * (not a character count), so this checks a word at a time.
  */
-static inline size_t num_utf8_chars(const char *src, size_t len) {
-  size_t count = 0;
-  for (size_t i = 0; i < len; i++) {
-    // Cast to unsigned: on signed-char platforms a continuation byte would be
-    // negative and `>> 6` yields -2, miscounting it as a character.
-    if (yyjson_likely((unsigned char)src[i] >> 6 != 2)) {
-      count++;
-    }
+static inline int is_ascii(const char *src, size_t len) {
+  size_t i = 0;
+  for (; i + 8 <= len; i += 8) {
+    uint64_t word;
+    memcpy(&word, src + i, sizeof(word));
+    if (word & 0x8080808080808080ULL) return 0;
   }
-  return count;
+  for (; i < len; i++) {
+    if ((unsigned char)src[i] & 0x80) return 0;
+  }
+  return 1;
 }
 
 /**
@@ -43,9 +45,7 @@ PyObject *unicode_from_str(const char *src, size_t len) {
   //
   // The details of these structures are here:
   //    https://github.com/python/cpython/blob/main/Include/cpython/unicodeobject.h#L53
-  size_t num_chars = num_utf8_chars(src, len);
-
-  if (yyjson_likely(num_chars == len)) {
+  if (yyjson_likely(is_ascii(src, len))) {
     PyObject *uni = PyUnicode_New(len, 127);
     if (!uni) return NULL;
     PyASCIIObject *uni_ascii = (PyASCIIObject *)uni;
@@ -56,6 +56,103 @@ PyObject *unicode_from_str(const char *src, size_t len) {
 
   return PyUnicode_DecodeUTF8(src, len, NULL);
 }
+
+/*
+ * Object keys repeat heavily in real JSON (every record in an array of objects
+ * shares the same key set), and re-decoding and re-hashing an identical
+ * PyUnicode for each occurrence dominates conversion time. This direct-mapped
+ * cache returns an existing, hash-cached key on a hit, skipping the decode, the
+ * allocation and the hash.
+ *
+ * CPython only; PyPy falls back to creating a fresh key each time.
+ */
+#ifndef PYPY_VERSION
+
+#define KEY_CACHE_SIZE 4096u  /* power of two */
+#define KEY_CACHE_MAX_LEN 64  /* only short keys (identifiers) are cached */
+
+/* A cache slot stores the interned key plus its UTF-8 bytes/length, so a hit is
+   a length check + memcmp with no Python API call. `utf8` points into `obj`'s
+   own cached UTF-8 buffer and stays valid until the slot is evicted. */
+typedef struct {
+  PyObject *obj;
+  const char *utf8;
+  uint32_t len;
+} key_slot;
+
+static key_slot key_cache[KEY_CACHE_SIZE];
+
+/* Return a hash-cached PyUnicode for the given key bytes. New reference. */
+static inline PyObject *cached_key(const char *str, size_t len) {
+  PyObject *key;
+
+  /* Empty or unusually long keys don't earn a cache slot, but still get their
+     hash computed so the dict insert can reuse it. */
+  if (len == 0 || len > KEY_CACHE_MAX_LEN) {
+    key = unicode_from_str(str, len);
+    if (key != NULL && ((PyASCIIObject *)key)->hash == -1) {
+      if (PyObject_Hash(key) == -1) {
+        Py_DECREF(key);
+        return NULL;
+      }
+    }
+    return key;
+  }
+
+  /* FNV-1a over the key bytes selects the slot. */
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < len; i++) {
+    h ^= (unsigned char)str[i];
+    h *= 16777619u;
+  }
+  uint32_t idx = h & (KEY_CACHE_SIZE - 1);
+
+  key_slot *slot = &key_cache[idx];
+  if (slot->obj != NULL && slot->len == (uint32_t)len &&
+      memcmp(slot->utf8, str, len) == 0) {
+    Py_INCREF(slot->obj);
+    return slot->obj;
+  }
+
+  key = unicode_from_str(str, len);
+  if (key == NULL) return NULL;
+  /* Compute and store the hash now, so the dict insert (and every future hit)
+     skips siphash. */
+  if (PyObject_Hash(key) == -1) {
+    Py_DECREF(key);
+    return NULL;
+  }
+
+  /* Cache the object's UTF-8 view for future comparisons (free for ASCII). */
+  {
+    Py_ssize_t clen;
+    const char *cbytes = PyUnicode_AsUTF8AndSize(key, &clen);
+    if (cbytes == NULL) {
+      Py_DECREF(key);
+      return NULL;
+    }
+    Py_XSETREF(slot->obj, key);  /* evict previous occupant */
+    slot->utf8 = cbytes;
+    slot->len = (uint32_t)clen;
+  }
+
+  Py_INCREF(key);  /* one ref for the cache slot (above), one for the caller */
+  return key;
+}
+
+/* Presize the dict to avoid resizes while filling. `cached_key` has already
+   computed and stored each key's hash in the object, so a plain PyDict_SetItem
+   reuses it (no siphash) -- we don't need the (3.13-removed) known-hash API. */
+#define NEW_DICT(n) _PyDict_NewPresized((Py_ssize_t)(n))
+#define DICT_SET_KEYVAL(d, k, v) PyDict_SetItem((d), (k), (v))
+
+#else /* PYPY_VERSION */
+
+#define cached_key(str, len) unicode_from_str((str), (len))
+#define NEW_DICT(n) PyDict_New()
+#define DICT_SET_KEYVAL(d, k, v) PyDict_SetItem((d), (k), (v))
+
+#endif /* PYPY_VERSION */
 
 /**
  * Recursively convert the given value into an equivalent high-level Python
@@ -119,7 +216,7 @@ static PyObject *element_to_primitive(yyjson_val *val) {
         return NULL;
       }
 
-      container = PyDict_New();
+      container = NEW_DICT(yyjson_obj_size(val));
       if (!container) goto error;
 
       yyjson_val *obj_key, *obj_val;
@@ -131,7 +228,7 @@ static PyObject *element_to_primitive(yyjson_val *val) {
         obj_val = yyjson_obj_iter_get_val(obj_key);
 
         PyObject *py_key =
-            unicode_from_str(yyjson_get_str(obj_key), yyjson_get_len(obj_key));
+            cached_key(yyjson_get_str(obj_key), yyjson_get_len(obj_key));
         if (!py_key) goto error;
 
         PyObject *py_val = element_to_primitive(obj_val);
@@ -140,7 +237,7 @@ static PyObject *element_to_primitive(yyjson_val *val) {
           goto error;
         }
 
-        int rc = PyDict_SetItem(container, py_key, py_val);
+        int rc = DICT_SET_KEYVAL(container, py_key, py_val);
         Py_DECREF(py_key);
         Py_DECREF(py_val);
         if (rc == -1) goto error;
@@ -620,9 +717,70 @@ error:
 }
 
 /**
+ * Parse JSON text from `content` into a new immutable document, dispatching on
+ * its type: ``str``, ``bytes``, ``bytearray``, or a ``pathlib.Path`` (read from
+ * disk). Shared by the Document constructor and the module-level ``loads``.
+ *
+ * On success returns the document. On failure returns NULL and sets `*not_text`:
+ *   1  `content` was not one of the text types above; no exception is set, and
+ *      the caller decides what to do (stream a file-like, build from a value,
+ *      or raise).
+ *   0  a read or parse error occurred and a Python exception is already set.
+ */
+static yyjson_doc *parse_content(
+    PyObject *content, yyjson_read_flag flag, const yyjson_alc *alc,
+    int *not_text
+) {
+  yyjson_read_err err;
+  yyjson_doc *doc;
+
+  *not_text = 0;
+
+  if (yyjson_likely(PyBytes_Check(content))) {
+    // Discarding const is safe as long as we never expose the insitu flag.
+    doc = yyjson_read_opts((char *)PyBytes_AS_STRING(content),
+                           (size_t)PyBytes_GET_SIZE(content), flag, alc, &err);
+  } else if (yyjson_likely(PyUnicode_Check(content))) {
+    Py_ssize_t len;
+    const char *utf8 = PyUnicode_AsUTF8AndSize(content, &len);
+    if (utf8 == NULL) return NULL;
+    doc = yyjson_read_opts((char *)utf8, (size_t)len, flag, alc, &err);
+  } else if (PyByteArray_Check(content)) {
+    doc = yyjson_read_opts(PyByteArray_AS_STRING(content),
+                           (size_t)PyByteArray_GET_SIZE(content), flag, alc,
+                           &err);
+  } else {
+    int is_path;
+    PyObject *as_str;
+    const char *pstr;
+    if (ensure_pathlib() < 0) return NULL;
+    is_path = PyObject_IsInstance(content, path);
+    if (is_path < 0) return NULL;
+    if (!is_path) {
+      *not_text = 1;
+      return NULL;
+    }
+    as_str = PyObject_Str(content);
+    if (as_str == NULL) return NULL;
+    pstr = PyUnicode_AsUTF8AndSize(as_str, NULL);
+    if (pstr == NULL) {
+      Py_DECREF(as_str);
+      return NULL;
+    }
+    doc = yyjson_read_file(pstr, flag, alc, &err);
+    Py_DECREF(as_str);
+  }
+
+  if (doc == NULL) {
+    PyErr_SetString(PyExc_ValueError, err.msg);
+  }
+  return doc;
+}
+
+/**
  * Parse `content` as JSON text into self->i_doc. `content` may be a ``str``,
- * ``bytes``, a ``pathlib.Path`` (read from disk), or a binary file-like object.
- * Returns:
+ * ``bytes``, ``bytearray``, a ``pathlib.Path`` (read from disk), or a binary
+ * file-like object. Returns:
  *   0  parsed successfully,
  *  -1  an error occurred (a Python exception is set),
  *   1  `content` is not a JSON-text type and should be built from instead.
@@ -630,66 +788,22 @@ error:
 static int document_read_json(
     DocumentObject *self, PyObject *content, yyjson_read_flag r_flag
 ) {
-  yyjson_read_err err;
+  int not_text;
+  yyjson_doc *doc = parse_content(content, r_flag, self->alc, &not_text);
 
-  if (yyjson_likely(PyBytes_Check(content))) {
-    Py_ssize_t content_len;
-    const char *content_as_utf8 = NULL;
-    PyBytes_AsStringAndSize(content, (char **)&content_as_utf8, &content_len);
-    // As long as we don't expose the insitu reader flag, it's safe to discard
-    // the const here.
-    self->i_doc = yyjson_read_opts(
-        (char *)content_as_utf8, content_len, r_flag, self->alc, &err
-    );
-  } else if (yyjson_likely(PyUnicode_Check(content))) {
-    Py_ssize_t content_len;
-    const char *content_as_utf8 =
-        PyUnicode_AsUTF8AndSize(content, &content_len);
-    if (content_as_utf8 == NULL) {
-      return -1;
-    }
-    self->i_doc = yyjson_read_opts(
-        (char *)content_as_utf8, content_len, r_flag, self->alc, &err
-    );
-  } else {
-    if (ensure_pathlib() < 0) {
-      return -1;
-    }
-
-    int is_path = PyObject_IsInstance(content, path);
-    if (is_path < 0) {
-      return -1;
-    }
-    if (!is_path) {
-      // A binary file-like object is streamed into a DOM; anything else is
-      // built from as a Python value by the caller.
-      if (PyObject_HasAttrString(content, "read")) {
-        return document_read_stream(self, content, r_flag);
-      }
-      return 1;
-    }
-
-    // We were given a Path object to a location on disk.
-    PyObject *as_str = PyObject_Str(content);
-    if (as_str == NULL) {
-      return -1;
-    }
-    Py_ssize_t str_len;
-    const char *str = PyUnicode_AsUTF8AndSize(as_str, &str_len);
-    if (str == NULL) {
-      Py_DECREF(as_str);
-      return -1;
-    }
-    self->i_doc = yyjson_read_file(str, r_flag, self->alc, &err);
-    Py_DECREF(as_str);
+  if (doc != NULL) {
+    self->i_doc = doc;
+    return 0;
   }
-
-  if (!self->i_doc) {
-    PyErr_SetString(PyExc_ValueError, err.msg);
-    return -1;
+  if (!not_text) {
+    return -1;  // a read/parse error occurred; a Python exception is set
   }
-
-  return 0;
+  // A binary file-like object is streamed into a DOM; anything else is built
+  // from as a Python value by the caller.
+  if (PyObject_HasAttrString(content, "read")) {
+    return document_read_stream(self, content, r_flag);
+  }
+  return 1;
 }
 
 PyDoc_STRVAR(
@@ -859,7 +973,7 @@ static PyObject *Document_from_json(
   int result = document_read_json(self, content, r_flag);
   if (result == 1) {
     PyErr_Format(PyExc_TypeError,
-        "from_json() expects str, bytes, or Path, not '%s'",
+        "from_json() expects str, bytes, bytearray, or Path, not '%s'",
         Py_TYPE(content)->tp_name
     );
     result = -1;
@@ -873,15 +987,78 @@ static PyObject *Document_from_json(
 }
 
 /**
+ * Convert a document's root to Python objects with the cyclic GC disabled for
+ * the duration. The result is an acyclic tree, so a collection mid-build can
+ * never free anything and only wastes time. The prior GC state is restored
+ * rather than force-enabled.
+ */
+static PyObject *doc_root_to_obj(DocumentObject *self) {
+  PyObject *result;
+#if !defined(PYPY_VERSION) && PY_VERSION_HEX >= 0x030A0000
+  int gc_was_enabled = PyGC_IsEnabled();
+  if (gc_was_enabled) PyGC_Disable();
+#endif
+  if (self->i_doc) {
+    result = element_to_primitive(yyjson_doc_get_root(self->i_doc));
+  } else {
+    result = mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc));
+  }
+#if !defined(PYPY_VERSION) && PY_VERSION_HEX >= 0x030A0000
+  if (gc_was_enabled) PyGC_Enable();
+#endif
+  return result;
+}
+
+/**
  * Recursively convert the document into Python objects.
  */
 static PyObject *Document_as_obj(DocumentObject *self, void *closure) {
-  if (self->i_doc) {
-    return element_to_primitive(yyjson_doc_get_root(self->i_doc));
-  } else {
-    return mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc));
-  }
+  return doc_root_to_obj(self);
 }
+
+PyDoc_STRVAR(
+    py_loads_doc,
+    "loads(s)\n"
+    "\n"
+    "Parse a JSON document from a ``str``, ``bytes``, ``bytearray``, or a\n"
+    "``pathlib.Path`` (read from disk) and return the equivalent Python object.");
+static PyObject *py_loads(PyObject *module, PyObject *arg) {
+  int not_text;
+  yyjson_doc *doc;
+  PyObject *result;
+  (void)module;
+
+  doc = parse_content(arg, 0, &PyMem_Allocator, &not_text);
+  if (doc == NULL) {
+    if (not_text) {
+      PyErr_Format(
+          PyExc_TypeError,
+          "loads() argument must be str, bytes, bytearray, or Path, not '%s'",
+          Py_TYPE(arg)->tp_name);
+    }
+    return NULL;
+  }
+
+  /* Convert with the cyclic GC disabled (acyclic tree; see doc_root_to_obj). */
+#if !defined(PYPY_VERSION) && PY_VERSION_HEX >= 0x030A0000
+  {
+    int gc_was_enabled = PyGC_IsEnabled();
+    if (gc_was_enabled) PyGC_Disable();
+    result = element_to_primitive(yyjson_doc_get_root(doc));
+    if (gc_was_enabled) PyGC_Enable();
+  }
+#else
+  result = element_to_primitive(yyjson_doc_get_root(doc));
+#endif
+
+  yyjson_doc_free(doc);
+  return result;
+}
+
+PyMethodDef yyjson_doc_methods[] = {
+    {"loads", (PyCFunction)py_loads, METH_O, py_loads_doc},
+    {NULL} /* Sentinel */
+};
 
 /**
  * Is the document mutable?

@@ -34,6 +34,13 @@ PyMODINIT_FUNC PyInit_cyyjson(void) {
     return NULL;
   }
 
+  // Module-level functions defined in document.c (loads, ...). The sax()
+  // function is registered via the module def's m_methods above.
+  if (PyModule_AddFunctions(m, yyjson_doc_methods) < 0) {
+    Py_DECREF(m);
+    return NULL;
+  }
+
   // We need to pre-import the Decimal module to have it available globally.
   YY_DecimalModule = PyImport_ImportModule("decimal");
   if (YY_DecimalModule == NULL) {

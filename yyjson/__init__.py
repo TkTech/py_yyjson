@@ -1,8 +1,8 @@
-__all__ = ["Document", "ReaderFlags", "WriterFlags", "sax"]
+__all__ = ["Document", "ReaderFlags", "WriterFlags", "sax", "loads", "load"]
 
 import enum
 
-from cyyjson import Document, sax
+from cyyjson import Document, sax, loads
 
 
 class ReaderFlags(enum.IntFlag):
@@ -60,11 +60,7 @@ class WriterFlags(enum.IntFlag):
 
 
 def load(fp):
-    return Document(fp.read()).as_obj
-
-
-def loads(s):
-    return Document(s).as_obj
+    return loads(fp.read())
 
 
 def dumps(obj, *, default=None):
