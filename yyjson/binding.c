@@ -4,11 +4,15 @@
 #include "document.h"
 #include "memory.h"
 #include "decimal.h"
+#include "pathlib.h"
 #include "sax.h"
 #include "yyjson.h"
 
 PyObject *YY_DecimalModule = NULL;
 PyObject *YY_DecimalClass = NULL;
+
+PyObject *YY_PathlibModule = NULL;
+PyObject *YY_PathClass = NULL;
 
 static PyModuleDef yymodule = {
     PyModuleDef_HEAD_INIT, .m_name = "cyyjson",
@@ -53,6 +57,19 @@ PyMODINIT_FUNC PyInit_cyyjson(void) {
     return NULL;
   }
   Py_INCREF(YY_DecimalClass);
+
+  // Same for pathlib.Path, accepted by loads()/Document() as a file path.
+  YY_PathlibModule = PyImport_ImportModule("pathlib");
+  if (YY_PathlibModule == NULL) {
+    return NULL;
+  }
+  Py_INCREF(YY_PathlibModule);
+
+  YY_PathClass = PyObject_GetAttrString(YY_PathlibModule, "Path");
+  if (YY_PathClass == NULL) {
+    return NULL;
+  }
+  Py_INCREF(YY_PathClass);
 
   return m;
 }

@@ -2,6 +2,7 @@
 
 #include "memory.h"
 #include "decimal.h"
+#include "pathlib.h"
 
 #define ENSURE_MUTABLE(self)                                   \
   if (self->i_doc) {                                           \
@@ -12,9 +13,6 @@
 
 static PyObject *mut_element_to_primitive(yyjson_mut_val *val);
 static PyObject *element_to_primitive(yyjson_val *val, int depth);
-
-static PyObject *pathlib = NULL;
-static PyObject *path = NULL;
 
 /**
  * Return non-zero if the buffer is pure ASCII. Only the yes/no answer is needed
@@ -576,33 +574,6 @@ static int document_build_from_object(DocumentObject *self, PyObject *content) {
 }
 
 /**
- * Lazily import ``pathlib.Path`` into the module-global ``path`` (keeping the
- * module alive in ``pathlib``). The globals are only published once both the
- * import and attribute lookup succeed, so a partial failure can't poison the
- * cache. Returns 0 on success, -1 (with an exception set) on failure.
- */
-static int ensure_pathlib(void) {
-  if (yyjson_likely(path != NULL)) {
-    return 0;
-  }
-
-  PyObject *mod = PyImport_ImportModule("pathlib");
-  if (mod == NULL) {
-    return -1;
-  }
-
-  PyObject *cls = PyObject_GetAttrString(mod, "Path");
-  if (cls == NULL) {
-    Py_DECREF(mod);
-    return -1;
-  }
-
-  pathlib = mod;
-  path = cls;
-  return 0;
-}
-
-/**
  * Read a binary file-like object (``read``/``readinto``) fully into a buffer
  * and parse it into ``self->i_doc``. The whole stream is drained in chunks, so
  * any read()-able object works; note that a DOM inherently holds the entire
@@ -746,8 +717,7 @@ static yyjson_doc *parse_content(
     int is_path;
     PyObject *as_str;
     const char *pstr;
-    if (ensure_pathlib() < 0) return NULL;
-    is_path = PyObject_IsInstance(content, path);
+    is_path = PyObject_IsInstance(content, YY_PathClass);
     if (is_path < 0) return NULL;
     if (!is_path) {
       *not_text = 1;
@@ -979,26 +949,49 @@ static PyObject *Document_from_json(
   return (PyObject *)self;
 }
 
+/*
+ * Conversions run with the cyclic GC paused: the result is an acyclic tree,
+ * so a collection mid-build can never free anything and only wastes time.
+ * A depth counter makes pause/resume safe against overlap: conversions can
+ * nest or interleave (a Decimal() call inside one can yield the GIL and run
+ * another thread's conversion), so only the outermost pause snapshots and
+ * toggles the GC state, and it is restored -- not force-enabled -- when the
+ * last conversion finishes.
+ */
+#if !defined(PYPY_VERSION) && PY_VERSION_HEX >= 0x030A0000
+static int gc_pause_depth = 0;
+static int gc_we_disabled = 0;
+
+static void gc_pause(void) {
+  if (gc_pause_depth++ == 0) {
+    gc_we_disabled = PyGC_IsEnabled();
+    if (gc_we_disabled) PyGC_Disable();
+  }
+}
+
+static void gc_resume(void) {
+  if (--gc_pause_depth == 0 && gc_we_disabled) {
+    PyGC_Enable();
+  }
+}
+#else
+#define gc_pause() ((void)0)
+#define gc_resume() ((void)0)
+#endif
+
 /**
- * Convert a document's root to Python objects with the cyclic GC disabled for
- * the duration. The result is an acyclic tree, so a collection mid-build can
- * never free anything and only wastes time. The prior GC state is restored
- * rather than force-enabled.
+ * Convert a document's root to Python objects with the cyclic GC paused for
+ * the duration (see gc_pause above).
  */
 static PyObject *doc_root_to_obj(DocumentObject *self) {
   PyObject *result;
-#if !defined(PYPY_VERSION) && PY_VERSION_HEX >= 0x030A0000
-  int gc_was_enabled = PyGC_IsEnabled();
-  if (gc_was_enabled) PyGC_Disable();
-#endif
+  gc_pause();
   if (self->i_doc) {
     result = element_to_primitive(yyjson_doc_get_root(self->i_doc), 0);
   } else {
     result = mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc));
   }
-#if !defined(PYPY_VERSION) && PY_VERSION_HEX >= 0x030A0000
-  if (gc_was_enabled) PyGC_Enable();
-#endif
+  gc_resume();
   return result;
 }
 
@@ -1032,17 +1025,10 @@ static PyObject *py_loads(PyObject *module, PyObject *arg) {
     return NULL;
   }
 
-  /* Convert with the cyclic GC disabled (acyclic tree; see doc_root_to_obj). */
-#if !defined(PYPY_VERSION) && PY_VERSION_HEX >= 0x030A0000
-  {
-    int gc_was_enabled = PyGC_IsEnabled();
-    if (gc_was_enabled) PyGC_Disable();
-    result = element_to_primitive(yyjson_doc_get_root(doc), 0);
-    if (gc_was_enabled) PyGC_Enable();
-  }
-#else
+  /* Convert with the cyclic GC paused (acyclic tree; see gc_pause). */
+  gc_pause();
   result = element_to_primitive(yyjson_doc_get_root(doc), 0);
-#endif
+  gc_resume();
 
   yyjson_doc_free(doc);
   return result;

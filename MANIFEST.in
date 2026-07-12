@@ -6,6 +6,7 @@ include yyjson/memory.h
 include yyjson/document.c
 include yyjson/document.h
 include yyjson/decimal.h
+include yyjson/pathlib.h
 include yyjson/sax.c
 include yyjson/sax.h
 include yyjson/py.typed
