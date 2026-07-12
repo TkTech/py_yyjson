@@ -62,5 +62,6 @@ test-command = "pytest {project}/tests"
 
 [tool.uv]
 cache-keys = [
-    { file = "yyjson/*.c" }
+    { file = "yyjson/*.c" },
+    { file = "yyjson/*.h" }
 ]

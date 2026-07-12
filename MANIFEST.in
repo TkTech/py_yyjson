@@ -5,6 +5,7 @@ include yyjson/memory.c
 include yyjson/memory.h
 include yyjson/document.c
 include yyjson/document.h
+include yyjson/element_to_primitive.h
 include yyjson/decimal.h
 include yyjson/pathlib.h
 include yyjson/sax.c

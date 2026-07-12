@@ -427,3 +427,33 @@ def test_stream_nonblocking_read_raises():
         Document(_NonBlockingRead(b'{"a": 1}'))
     with pytest.raises(BlockingIOError):
         Document(_NonBlockingRead())
+
+
+def test_thawed_conversion_parity():
+    """The thawed (mutable) conversion path shares one implementation with
+    the frozen path; all scalar types and containers round-trip."""
+    from decimal import Decimal
+
+    obj = {
+        "nums": [1, -2, 3.5, 2**80, Decimal("1.23")],
+        "nested": {"a": [True, False, None, "x"]},
+        "unicode": "café € 日本語",
+        "empty": {},
+        "repeated_keys": [{"id": i, "name": "n"} for i in range(100)],
+    }
+    doc = Document(obj)
+    assert doc.is_thawed
+    assert doc.as_obj == obj
+
+
+def test_thawed_deep_nesting_raises():
+    """Conversion depth is capped at 1024 for thawed documents too (it always
+    was for frozen ones)."""
+    deep = cur = []
+    for _ in range(1100):
+        nxt = []
+        cur.append(nxt)
+        cur = nxt
+    doc = Document(deep)
+    with pytest.raises(RecursionError):
+        doc.as_obj

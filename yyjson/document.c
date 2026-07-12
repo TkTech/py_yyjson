@@ -4,7 +4,7 @@
 #include "decimal.h"
 #include "pathlib.h"
 
-static PyObject *mut_element_to_primitive(yyjson_mut_val *val);
+static PyObject *mut_element_to_primitive(yyjson_mut_val *val, int depth);
 static PyObject *element_to_primitive(yyjson_val *val, int depth);
 
 /**
@@ -185,215 +185,25 @@ static inline PyObject *cached_key(const char *str, size_t len) {
    parser alone would not suffice. */
 #define PY_YYJSON_MAX_DEPTH 1024
 
-/**
- * Recursively convert the given value into an equivalent high-level Python
- * object. `depth` is the current container nesting level.
- **/
-static PyObject *element_to_primitive(yyjson_val *val, int depth) {
-  yyjson_type type = yyjson_get_type(val);
+/* The converter body lives in element_to_primitive.h and is instantiated for
+   both of yyjson's mirrored value APIs; see that file for the pattern. */
 
-  // Containers are the cold path -- the vast majority of values are scalars.
-  // We walk the document tape directly (via the foreach macros) rather than
-  // through the iterator API, which avoids the per-element iterator bookkeeping.
-  if (yyjson_unlikely(type == YYJSON_TYPE_ARR || type == YYJSON_TYPE_OBJ)) {
-    size_t idx, max;
+#define CONVERT_FN element_to_primitive
+#define CONVERT_VAL yyjson_val
+#define CONVERT_API(n) yyjson_##n
+#include "element_to_primitive.h"
+#undef CONVERT_FN
+#undef CONVERT_VAL
+#undef CONVERT_API
 
-    if (yyjson_unlikely(depth >= PY_YYJSON_MAX_DEPTH)) {
-      PyErr_SetString(
-          PyExc_RecursionError,
-          "maximum recursion depth exceeded while converting JSON");
-      return NULL;
-    }
-    depth++;
+#define CONVERT_FN mut_element_to_primitive
+#define CONVERT_VAL yyjson_mut_val
+#define CONVERT_API(n) yyjson_mut_##n
+#include "element_to_primitive.h"
+#undef CONVERT_FN
+#undef CONVERT_VAL
+#undef CONVERT_API
 
-    if (type == YYJSON_TYPE_ARR) {
-      yyjson_val *ele;
-      PyObject *arr = PyList_New(yyjson_arr_size(val));
-      if (!arr) return NULL;
-      yyjson_arr_foreach(val, idx, max, ele) {
-        PyObject *py_val = element_to_primitive(ele, depth);
-        if (!py_val) {
-          Py_DECREF(arr);
-          return NULL;
-        }
-        PyList_SET_ITEM(arr, idx, py_val);
-      }
-      return arr;
-    } else {
-      yyjson_val *key, *ele;
-      PyObject *dict = NEW_DICT(yyjson_obj_size(val));
-      if (!dict) return NULL;
-      yyjson_obj_foreach(val, idx, max, key, ele) {
-        PyObject *py_key =
-            cached_key(yyjson_get_str(key), yyjson_get_len(key));
-        if (!py_key) {
-          Py_DECREF(dict);
-          return NULL;
-        }
-        PyObject *py_val = element_to_primitive(ele, depth);
-        if (!py_val) {
-          Py_DECREF(py_key);
-          Py_DECREF(dict);
-          return NULL;
-        }
-        int rc = DICT_SET_KEYVAL(dict, py_key, py_val);
-        Py_DECREF(py_key);
-        Py_DECREF(py_val);
-        if (rc == -1) {
-          Py_DECREF(dict);
-          return NULL;
-        }
-      }
-      return dict;
-    }
-  }
-
-  // Scalar hot path.
-  switch (type) {
-    case YYJSON_TYPE_STR:
-      return unicode_from_str(yyjson_get_str(val), yyjson_get_len(val));
-    case YYJSON_TYPE_NUM:
-      switch (yyjson_get_subtype(val)) {
-        case YYJSON_SUBTYPE_UINT:
-          return PyLong_FromUnsignedLongLong(yyjson_get_uint(val));
-        case YYJSON_SUBTYPE_SINT:
-          return PyLong_FromLongLong(yyjson_get_sint(val));
-        default:  // YYJSON_SUBTYPE_REAL
-          return PyFloat_FromDouble(yyjson_get_real(val));
-      }
-    case YYJSON_TYPE_BOOL:
-      if (yyjson_get_subtype(val) == YYJSON_SUBTYPE_TRUE) {
-        Py_RETURN_TRUE;
-      }
-      Py_RETURN_FALSE;
-    case YYJSON_TYPE_NULL:
-      Py_RETURN_NONE;
-    case YYJSON_TYPE_RAW: {
-      PyObject *result;
-      PyObject *uni =
-          unicode_from_str(yyjson_get_raw(val), yyjson_get_len(val));
-      if (!uni) return NULL;
-      result = PyObject_CallOneArg(YY_DecimalClass, uni);
-      Py_DECREF(uni);
-      return result;
-    }
-    default:  // YYJSON_TYPE_NONE
-      PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
-      return NULL;
-  }
-}
-
-/**
- * Recursively convert the given value into an equivalent high-level Python
- * object.
- **/
-static PyObject *mut_element_to_primitive(yyjson_mut_val *val) {
-  yyjson_type type = yyjson_mut_get_type(val);
-  PyObject *container = NULL;
-
-  switch (type) {
-    case YYJSON_TYPE_NULL:
-      Py_RETURN_NONE;
-    case YYJSON_TYPE_BOOL:
-      if (yyjson_mut_get_subtype(val) == YYJSON_SUBTYPE_TRUE) {
-        Py_RETURN_TRUE;
-      } else {
-        Py_RETURN_FALSE;
-      }
-    case YYJSON_TYPE_NUM: {
-      switch (yyjson_mut_get_subtype(val)) {
-        case YYJSON_SUBTYPE_UINT:
-          return PyLong_FromUnsignedLongLong(yyjson_mut_get_uint(val));
-        case YYJSON_SUBTYPE_SINT:
-          return PyLong_FromLongLong(yyjson_mut_get_sint(val));
-        case YYJSON_SUBTYPE_REAL:
-          return PyFloat_FromDouble(yyjson_mut_get_real(val));
-      }
-    }
-    case YYJSON_TYPE_STR: {
-      size_t str_len = yyjson_mut_get_len(val);
-      const char *str = yyjson_mut_get_str(val);
-
-      return PyUnicode_FromStringAndSize(str, str_len);
-    }
-    case YYJSON_TYPE_ARR: {
-      if (Py_EnterRecursiveCall(
-              " while converting a JSON document to Python objects")) {
-        return NULL;
-      }
-
-      container = PyList_New(yyjson_mut_arr_size(val));
-      if (!container) goto error;
-
-      yyjson_mut_val *obj_val;
-      yyjson_mut_arr_iter iter = {0};
-      yyjson_mut_arr_iter_init(val, &iter);
-
-      size_t idx = 0;
-      while ((obj_val = yyjson_mut_arr_iter_next(&iter))) {
-        PyObject *py_val = mut_element_to_primitive(obj_val);
-        if (!py_val) goto error;
-
-        PyList_SET_ITEM(container, idx++, py_val);
-      }
-
-      Py_LeaveRecursiveCall();
-      return container;
-    }
-    case YYJSON_TYPE_OBJ: {
-      if (Py_EnterRecursiveCall(
-              " while converting a JSON document to Python objects")) {
-        return NULL;
-      }
-
-      container = PyDict_New();
-      if (!container) goto error;
-
-      yyjson_mut_val *obj_key, *obj_val;
-
-      yyjson_mut_obj_iter iter = {0};
-      yyjson_mut_obj_iter_init(val, &iter);
-
-      while ((obj_key = yyjson_mut_obj_iter_next(&iter))) {
-        obj_val = yyjson_mut_obj_iter_get_val(obj_key);
-
-        PyObject *py_key = mut_element_to_primitive(obj_key);
-        if (!py_key) goto error;
-
-        PyObject *py_val = mut_element_to_primitive(obj_val);
-        if (!py_val) {
-          Py_DECREF(py_key);
-          goto error;
-        }
-
-        int rc = PyDict_SetItem(container, py_key, py_val);
-        Py_DECREF(py_key);
-        Py_DECREF(py_val);
-        if (rc == -1) goto error;
-      }
-
-      Py_LeaveRecursiveCall();
-      return container;
-    }
-    case YYJSON_TYPE_RAW: {
-      size_t str_len = yyjson_mut_get_len(val);
-      const char *str = yyjson_mut_get_raw(val);
-      PyObject *uni = unicode_from_str(str, str_len);
-      PyObject *result = PyObject_CallOneArg(YY_DecimalClass, uni);
-      Py_DECREF(uni);
-      return result;
-    }
-    case YYJSON_TYPE_NONE:
-    default:
-      PyErr_SetString(PyExc_TypeError, "Unknown tape type encountered.");
-      return NULL;
-  }
-
-error:
-  Py_LeaveRecursiveCall();
-  Py_XDECREF(container);
-  return NULL;
-}
 
 PyTypeObject *type_for_conversion(PyObject *obj) {
   if (obj->ob_type == &PyUnicode_Type) {
@@ -1095,7 +905,7 @@ static PyObject *doc_root_to_obj(DocumentObject *self) {
   if (self->i_doc) {
     result = element_to_primitive(yyjson_doc_get_root(self->i_doc), 0);
   } else {
-    result = mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc));
+    result = mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc), 0);
   }
   gc_resume();
   return result;
@@ -1302,7 +1112,7 @@ static PyObject *Document_get_pointer(DocumentObject *self, PyObject *args) {
       return NULL;
     }
 
-    return mut_element_to_primitive(result);
+    return mut_element_to_primitive(result, 0);
   }
 }
 
