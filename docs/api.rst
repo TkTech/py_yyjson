@@ -1,6 +1,8 @@
 API
 ---
 
+.. currentmodule:: yyjson
+
 .. note::
 
     When creating and manipulating a :class:`Document`, it's important to keep
