@@ -55,6 +55,39 @@ PyObject *unicode_from_str(const char *src, size_t len) {
   return PyUnicode_DecodeUTF8(src, len, NULL);
 }
 
+/**
+ * Open a path-like object for binary reading. Cross-platform: on Windows the
+ * path must go through the wide-char API (fopen() interprets narrow paths in
+ * the ANSI codepage, breaking non-ASCII names); elsewhere the path is encoded
+ * with the filesystem encoding (not UTF-8 + str(), which breaks surrogate
+ * names). Shared with the streaming (SAX) reader.
+ *
+ * Returns NULL with an OSError set on failure.
+ *
+ * TODO: replace with the public Py_fopen() once Python 3.14 is our floor.
+ */
+FILE *fopen_path(PyObject *path) {
+  FILE *fp;
+#ifdef MS_WINDOWS
+  PyObject *str = NULL;
+  wchar_t *wpath;
+  if (!PyUnicode_FSDecoder(path, &str)) return NULL;
+  wpath = PyUnicode_AsWideCharString(str, NULL);
+  Py_DECREF(str);
+  if (wpath == NULL) return NULL;
+  fp = _wfopen(wpath, L"rb");
+  if (fp == NULL) PyErr_SetFromErrnoWithFilenameObject(PyExc_OSError, path);
+  PyMem_Free(wpath);
+#else
+  PyObject *bytes = NULL;
+  if (!PyUnicode_FSConverter(path, &bytes)) return NULL;
+  fp = fopen(PyBytes_AS_STRING(bytes), "rb");
+  if (fp == NULL) PyErr_SetFromErrnoWithFilenameObject(PyExc_OSError, path);
+  Py_DECREF(bytes);
+#endif
+  return fp;
+}
+
 /*
  * Object keys repeat heavily in real JSON (every record in an array of objects
  * shares the same key set), and re-decoding and re-hashing an identical
@@ -775,23 +808,17 @@ static yyjson_doc *parse_content(
                            &err);
   } else {
     int is_path;
-    PyObject *as_str;
-    const char *pstr;
+    FILE *fp;
     is_path = PyObject_IsInstance(content, YY_PathClass);
     if (is_path < 0) return NULL;
     if (!is_path) {
       *not_text = 1;
       return NULL;
     }
-    as_str = PyObject_Str(content);
-    if (as_str == NULL) return NULL;
-    pstr = PyUnicode_AsUTF8AndSize(as_str, NULL);
-    if (pstr == NULL) {
-      Py_DECREF(as_str);
-      return NULL;
-    }
-    doc = yyjson_read_file(pstr, flag, alc, &err);
-    Py_DECREF(as_str);
+    fp = fopen_path(content);
+    if (fp == NULL) return NULL; /* OSError with the filename is set */
+    doc = yyjson_read_fp(fp, flag, alc, &err);
+    fclose(fp);
   }
 
   if (doc == NULL) {

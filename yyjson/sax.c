@@ -343,34 +343,12 @@ static PyObject *py_sax(PyObject *self, PyObject *args, PyObject *kwds) {
 
     /* pathlib.Path (or any os.PathLike, but not str/bytes handled above) */
     if (!handled && PyObject_HasAttrString(source, "__fspath__")) {
-        PyObject *fspath = PyOS_FSPath(source);
-        if (!fspath) goto cleanup;
-        {
-            const char *path = NULL;
-            FILE *fp;
-            if (PyUnicode_Check(fspath)) {
-                path = PyUnicode_AsUTF8(fspath);
-            } else if (PyBytes_Check(fspath)) {
-                path = PyBytes_AS_STRING(fspath);
-            }
-            if (!path) {
-                if (!PyErr_Occurred())
-                    PyErr_SetString(PyExc_TypeError, "invalid path");
-                Py_DECREF(fspath);
-                goto cleanup;
-            }
-            fp = fopen(path, "rb");
-            if (!fp) {
-                PyErr_SetFromErrnoWithFilenameObject(PyExc_OSError, source);
-                Py_DECREF(fspath);
-                goto cleanup;
-            }
-            ok = yyjson_sax_read_fp(fp, &h, &pc, flags, &opts,
-                                    &PyMem_Allocator, &err);
-            fclose(fp);
-            Py_DECREF(fspath);
-            handled = 1;
-        }
+        FILE *fp = fopen_path(source);
+        if (!fp) goto cleanup;
+        ok = yyjson_sax_read_fp(fp, &h, &pc, flags, &opts,
+                                &PyMem_Allocator, &err);
+        fclose(fp);
+        handled = 1;
     }
 
     /* binary file-like object */

@@ -32,4 +32,11 @@ extern PyMethodDef yyjson_doc_methods[];
  */
 PyObject *unicode_from_str(const char *src, size_t len);
 
+/**
+ * Open a path-like object for binary reading, handling non-ASCII paths on
+ * every platform. Returns NULL with an OSError set on failure. Shared with
+ * the streaming (SAX) reader.
+ */
+FILE *fopen_path(PyObject *path);
+
 #endif
