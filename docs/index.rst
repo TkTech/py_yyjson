@@ -8,7 +8,7 @@
   development.rst
   changelog.md
 
-Fast and flexible Python JSON parsing built on the excellent `yyjson`_ library.
+Fast and flexible Python JSON/JSON5 parsing built on the excellent `yyjson`_ library.
 
 .. image:: https://img.shields.io/github/sponsors/tktech
    :alt: GitHub Sponsors

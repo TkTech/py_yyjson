@@ -5,7 +5,7 @@
 
 ![py_yyjson Logo](misc/logo_small.png)
 
-Fast and flexible Python JSON parsing built on the excellent [yyjson][]
+Fast and flexible Python JSON/JSON5 parsing built on the excellent [yyjson][]
 project.
 
 ![GitHub Sponsors](https://img.shields.io/github/sponsors/tktech)
