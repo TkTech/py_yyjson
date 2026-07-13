@@ -4,14 +4,20 @@
 #include "document.h"
 #include "memory.h"
 #include "decimal.h"
+#include "pathlib.h"
+#include "sax.h"
 #include "yyjson.h"
 
 PyObject *YY_DecimalModule = NULL;
 PyObject *YY_DecimalClass = NULL;
 
+PyObject *YY_PathlibModule = NULL;
+PyObject *YY_PathClass = NULL;
+
 static PyModuleDef yymodule = {
     PyModuleDef_HEAD_INIT, .m_name = "cyyjson",
-    .m_doc = "Python bindings for the yyjson project.", .m_size = -1};
+    .m_doc = "Python bindings for the yyjson project.", .m_size = -1,
+    .m_methods = yyjson_sax_methods};
 
 PyMODINIT_FUNC PyInit_cyyjson(void) {
   PyObject* m;
@@ -32,6 +38,13 @@ PyMODINIT_FUNC PyInit_cyyjson(void) {
     return NULL;
   }
 
+  // Module-level functions defined in document.c (loads, ...). The sax()
+  // function is registered via the module def's m_methods above.
+  if (PyModule_AddFunctions(m, yyjson_doc_methods) < 0) {
+    Py_DECREF(m);
+    return NULL;
+  }
+
   // We need to pre-import the Decimal module to have it available globally.
   YY_DecimalModule = PyImport_ImportModule("decimal");
   if (YY_DecimalModule == NULL) {
@@ -44,6 +57,19 @@ PyMODINIT_FUNC PyInit_cyyjson(void) {
     return NULL;
   }
   Py_INCREF(YY_DecimalClass);
+
+  // Same for pathlib.Path, accepted by loads()/Document() as a file path.
+  YY_PathlibModule = PyImport_ImportModule("pathlib");
+  if (YY_PathlibModule == NULL) {
+    return NULL;
+  }
+  Py_INCREF(YY_PathlibModule);
+
+  YY_PathClass = PyObject_GetAttrString(YY_PathlibModule, "Path");
+  if (YY_PathClass == NULL) {
+    return NULL;
+  }
+  Py_INCREF(YY_PathClass);
 
   return m;
 }

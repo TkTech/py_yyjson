@@ -5,7 +5,7 @@
 
 ![py_yyjson Logo](misc/logo_small.png)
 
-Fast and flexible Python JSON parsing built on the excellent [yyjson][]
+Fast and flexible Python JSON/JSON5 parsing built on the excellent [yyjson][]
 project.
 
 ![GitHub Sponsors](https://img.shields.io/github/sponsors/tktech)
@@ -30,6 +30,9 @@ project.
   objects.
 - **Traceable**: `yyjson` uses Python's memory allocator by default, so you can
   trace memory leaks and other memory issues using Python's built-in tools.
+- **SAX-style parsing**: An optional SAX-style parser allowing you to read
+  JSON documents of unlimited size with bounded memory usage, typically 2-5x
+  faster than `ijson`.
 
 ## Documentation
 

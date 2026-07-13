@@ -23,4 +23,20 @@ typedef struct {
 
 extern PyTypeObject DocumentType;
 
+/** Module-level functions defined in document.c (e.g. ``loads``). */
+extern PyMethodDef yyjson_doc_methods[];
+
+/**
+ * Convert a UTF-8 string of `len` bytes into a Python ``str``, using a fast
+ * path for pure-ASCII input. Shared with the streaming (SAX) reader.
+ */
+PyObject *unicode_from_str(const char *src, size_t len);
+
+/**
+ * Open a path-like object for binary reading, handling non-ASCII paths on
+ * every platform. Returns NULL with an OSError set on failure. Shared with
+ * the streaming (SAX) reader.
+ */
+FILE *fopen_path(PyObject *path);
+
 #endif

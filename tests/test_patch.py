@@ -45,6 +45,51 @@ def test_json_patch(context):
     assert modified.as_obj == context["modified"]
 
 
+@pytest.mark.parametrize(
+    "self_content",
+    [
+        {"a": 1, "b": 2},    # mutable Document (built from a Python object)
+        '{"a": 1, "b": 2}',  # immutable Document (parsed from JSON text)
+    ],
+)
+def test_patch_coerces_plain_arguments(self_content):
+    """
+    patch() accepts a plain dict / list / JSON-string patch and coerces it to a
+    Document, so callers don't have to wrap it by hand.
+    """
+    doc = Document(self_content)
+
+    # JSON Patch as a plain list of operations.
+    assert doc.patch([{"op": "add", "path": "/c", "value": 3}]).as_obj == {
+        "a": 1, "b": 2, "c": 3
+    }
+    # Merge-Patch as a plain dict (null deletes "b").
+    assert doc.patch({"b": None, "c": 3}, use_merge_patch=True).as_obj == {
+        "a": 1, "c": 3
+    }
+    # Merge-Patch given as a JSON string is parsed, not treated as a value.
+    assert doc.patch('{"b": 9}', use_merge_patch=True).as_obj == {"a": 1, "b": 9}
+
+
+@pytest.mark.parametrize(
+    "self_content",
+    [
+        {"a": 1},    # mutable Document
+        '{"a": 1}',  # immutable Document
+    ],
+)
+@pytest.mark.parametrize("bad_patch", ["not valid json", 42])
+def test_patch_invalid_argument_raises(self_content, bad_patch):
+    """
+    An argument that can't become a valid patch Document raises cleanly on both
+    mutable and immutable documents. The mutable path previously skipped the
+    type check and segfaulted on the raw pointer cast.
+    """
+    doc = Document(self_content)
+    with pytest.raises((TypeError, ValueError)):
+        doc.patch(bad_patch)
+
+
 def test_json_patch_samples():
     tests = Document(Path(__file__).parent / "tests.json").as_obj
 
@@ -68,3 +113,47 @@ def test_json_patch_samples():
 
         assert modified.as_obj == test["expected"]
 
+
+
+def test_patch_does_not_mutate_argument():
+    """Applying a patch never converts the caller's documents between
+    representations (previously the patch argument was frozen/thawed in
+    place to match the target)."""
+    # thawed patch onto a frozen target
+    target = Document('{"a": 1}')
+    patch = Document([{"op": "add", "path": "/b", "value": 2}])
+    assert patch.is_thawed is True
+    assert target.patch(patch).as_obj == {"a": 1, "b": 2}
+    assert patch.is_thawed is True
+    assert target.is_thawed is False
+
+    # frozen patch onto a thawed target
+    patch2 = Document('[{"op": "add", "path": "/b", "value": 2}]')
+    target2 = Document({"a": 1})
+    assert patch2.is_thawed is False
+    assert target2.patch(patch2).as_obj == {"a": 1, "b": 2}
+    assert patch2.is_thawed is False
+    assert target2.is_thawed is True
+
+    # one patch object works against all target representations, repeatedly
+    for _ in range(3):
+        for make_target in (lambda: Document('{"a": 1}'),
+                            lambda: Document({"a": 1})):
+            for p in (patch, patch2):
+                assert make_target().patch(p).as_obj == {"a": 1, "b": 2}
+    assert patch.is_thawed is True
+    assert patch2.is_thawed is False
+
+
+def test_merge_patch_does_not_mutate_argument():
+    # thawed patch onto a frozen target
+    patch = Document({"b": 2})
+    target = Document('{"a": 1}')
+    assert target.patch(patch, use_merge_patch=True).as_obj == {"a": 1, "b": 2}
+    assert patch.is_thawed is True
+
+    # frozen patch onto a thawed target
+    patch2 = Document('{"b": 2}')
+    target2 = Document({"a": 1})
+    assert target2.patch(patch2, use_merge_patch=True).as_obj == {"a": 1, "b": 2}
+    assert patch2.is_thawed is False

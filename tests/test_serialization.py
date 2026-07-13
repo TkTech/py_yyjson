@@ -33,3 +33,16 @@ def test_serialize_default_func():
         {"example": ClassThatCantBeSerialized()}, default=default
     )
     assert doc.as_obj["example"] == "I'm a string now!"
+
+
+def test_decimal_subclass_raising_str_does_not_crash():
+    """str() of a Decimal subclass can raise; this used to feed NULL into
+    PyUnicode_AsUTF8AndSize and segfault the interpreter."""
+    from decimal import Decimal
+
+    class Evil(Decimal):
+        def __str__(self):
+            raise RuntimeError("nope")
+
+    with pytest.raises(RuntimeError, match="nope"):
+        yyjson.Document({"d": Evil("1.5")})

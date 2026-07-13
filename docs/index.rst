@@ -6,8 +6,9 @@
 
   api.rst
   development.rst
+  changelog.md
 
-Fast and flexible Python JSON parsing built on the excellent `yyjson`_ library.
+Fast and flexible Python JSON/JSON5 parsing built on the excellent `yyjson`_ library.
 
 .. image:: https://img.shields.io/github/sponsors/tktech
    :alt: GitHub Sponsors
@@ -40,6 +41,9 @@ Features
   objects.
 - **Traceable**: `yyjson` uses Python's memory allocator by default, so you can
   trace memory leaks and other memory issues using Python's built-in tools.
+- **SAX-style parsing**: An optional SAX-style parser allows you to read JSON
+  documents of unlimited size with bounded memory usage, typically 2-5x
+  faster than `ijson`.
 
 
 Installation
@@ -108,8 +112,8 @@ spent parsing JSON in Python is spent just creating the Python objects!
 
 .. code-block:: python
 
-    >> from pathlib import Path
-    >> from yyjson import Document
+    >>> from pathlib import Path
+    >>> from yyjson import Document
     >>> doc = Document(Path("canada.json"))
     >>> features = doc.get_pointer("/features")
 
@@ -178,7 +182,7 @@ if we wanted to allow comments and trailing commas, we could do:
     >>> from yyjson import Document, ReaderFlags, WriterFlags
     >>> doc = Document(
     ...   '{"hello": "world",} // This is a comment',
-    ...   ReaderFlags.ALLOW_COMMENTS | ReaderFlags.ALLOW_TRAILING_COMMAS
+    ...   flags=ReaderFlags.ALLOW_COMMENTS | ReaderFlags.ALLOW_TRAILING_COMMAS
     ... )
 
 
@@ -227,6 +231,55 @@ too large for Python's float type as Decimals:
     <class 'decimal.Decimal'>
     >>> type(doc.get_pointer('/small'))
     <class 'float'>
+
+
+Streaming (SAX) parsing
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Some documents are too large to hold in memory, and sometimes you only need
+a few values out of a huge file. :func:`yyjson.sax` parses JSON as a stream
+of events with bounded memory: peak usage is a fixed sliding window
+(``window_size``, 256 KiB by default) plus the nesting depth, no matter how
+large the input is. The source can be a ``str``, any bytes-like object
+(``bytes``, ``bytearray``, ``memoryview``, ``mmap``, ...), a
+``pathlib.Path``, or a binary file-like object.
+
+The handler is any object; each of the following methods is called if it
+exists, and every one of them is optional:
+
+* ``obj_begin()`` / ``obj_end(count)`` -- an object opened or closed;
+  ``count`` is the number of members.
+* ``arr_begin()`` / ``arr_end(count)`` -- an array opened or closed;
+  ``count`` is the number of elements.
+* ``key(value)`` -- an object member key.
+* ``string(value)`` -- a string value.
+* ``number(value)`` -- an ``int``, ``float``, or (with the Decimal reader
+  flags) ``Decimal`` value.
+* ``boolean(value)`` / ``null()``.
+
+For example, collecting every key used anywhere in a document:
+
+.. code-block:: python
+
+    >>> from yyjson import sax, SAXHandler
+    >>> class KeyCollector(SAXHandler):
+    ...     def __init__(self):
+    ...         self.keys = set()
+    ...     def key(self, value):
+    ...         self.keys.add(value)
+    ...
+    >>> collector = KeyCollector()
+    >>> sax('{"a": 1, "b": {"c": [1, 2]}}', collector)
+    >>> sorted(collector.keys)
+    ['a', 'b', 'c']
+
+A handler method can return ``False`` to stop parsing early -- for example
+once you've found the value you were looking for -- and ``sax()`` returns
+normally. The reader flags are honored, so combining ``sax()`` with
+``ReaderFlags.NUMBERS_AS_DECIMAL`` streams perfect-precision numbers.
+
+The one constraint is that a single string or number token cannot be larger
+than the window; such an input raises ``ValueError``.
 
 
 .. _yyjson: https://github.com/ibireme/yyjson

@@ -32,7 +32,21 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.todo",
     "sphinx.ext.doctest",
+    "sphinx.ext.intersphinx",
     "sphinx_copybutton",
+    "myst_parser",
+]
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+}
+
+# `:type foo: callable, optional` in the C docstrings produces py:class
+# lookups for words that aren't classes; ignore those so the build can run
+# with -n (nitpicky) and -W (warnings are errors) in CI.
+nitpick_ignore = [
+    ("py:class", "callable"),
+    ("py:class", "optional"),
 ]
 
 # Add any paths that contain templates here, relative to this directory.

@@ -25,6 +25,38 @@ def test_document_from_str():
     assert doc.as_obj == {"hello": "world"}
 
 
+def test_document_from_json():
+    """Document.from_json always parses str/bytes/Path as JSON text."""
+    doc = Document.from_json('{"a": 1}')
+    assert doc.as_obj == {"a": 1}
+    assert doc.is_thawed is False  # parsed documents are immutable
+
+    assert Document.from_json(b'{"a": 1}').as_obj == {"a": 1}
+
+    # Reader flags are honored.
+    doc = Document.from_json(
+        '{"a": 1,}', flags=ReaderFlags.ALLOW_TRAILING_COMMAS
+    )
+    assert doc.as_obj == {"a": 1}
+
+    # A non-JSON-text argument is a TypeError, not a silent build-from-object.
+    with pytest.raises(TypeError):
+        Document.from_json({"a": 1})
+    with pytest.raises(TypeError):
+        Document.from_json(123)
+
+    # Invalid JSON raises ValueError.
+    with pytest.raises(ValueError):
+        Document.from_json("not json")
+
+
+def test_document_from_json_path(tmp_path):
+    """Document.from_json reads and parses a file given a Path."""
+    p = tmp_path / "doc.json"
+    p.write_text('{"greeting": "café 日本"}', encoding="utf-8")
+    assert Document.from_json(p).as_obj == {"greeting": "café 日本"}
+
+
 def test_document_types():
     """Ensure each primitive type can be upcast (which does not have its own
     dedicated test.)"""
@@ -39,6 +71,31 @@ def test_document_types():
     for src, dst in values:
         doc = Document(src)
         assert doc.as_obj == dst
+
+
+def test_document_unicode_as_obj():
+    """Non-ASCII strings must survive the round-trip through .as_obj, not just
+    dumps(). Regression test for the ASCII fast-path miscounting multi-byte
+    UTF-8 continuation bytes."""
+    cases = [
+        "café",                     # 2-byte sequences
+        "naïve",
+        "日本語",                    # 3-byte sequences
+        "Ω≈ç√",
+        "🙇🎉",                     # 4-byte sequences (astral plane)
+        "mixed café 日本 🙇 tail",  # ASCII interleaved with multi-byte
+    ]
+    for value in cases:
+        doc = Document('{"key": "%s"}' % value)
+        assert doc.as_obj == {"key": value}
+
+    # Non-ASCII object keys go through the same fast-path.
+    doc = Document('{"café": "value"}')
+    assert doc.as_obj == {"café": "value"}
+
+    # The bytes input path decodes through the same conversion.
+    doc = Document('["日本語"]'.encode("utf-8"))
+    assert doc.as_obj == ["日本語"]
 
 
 def test_document_dumps():
@@ -152,6 +209,30 @@ def test_document_boolean_type():
     assert doc.dumps() == "[false]"
     assert doc.as_obj == [False]
 
+def test_document_list_type():
+    doc = Document('[1,2,3,4]')
+    assert doc.dumps() == '[1,2,3,4]'
+    assert doc.as_obj == [1, 2, 3, 4]
+
+    doc = Document([1, 2, 3, 4])
+    assert doc.dumps() == '[1,2,3,4]'
+    assert doc.as_obj == [1, 2, 3, 4]
+
+def test_document_tuple_type():
+    doc = Document(())
+    assert doc.dumps() == '[]'
+
+    doc = Document((1,))
+    assert doc.dumps() == '[1]'
+
+    doc = Document((1, 2, 3, 4))
+    assert doc.dumps() == '[1,2,3,4]'
+
+    doc = Document([(1, 2), (3, 4)])
+    assert doc.dumps() == '[[1,2],[3,4]]'
+
+    doc = Document({'test': (1, 2)})
+    assert doc.dumps() == '{"test":[1,2]}'
 
 def test_document_none_type():
     """
@@ -164,6 +245,27 @@ def test_document_none_type():
     doc = Document([None])
     assert doc.dumps() == "[null]"
     assert doc.as_obj == [None]
+
+
+def test_document_dict_type():
+    """
+    Ensure we can load and dump the dict type.
+    """
+    doc = Document('{"a": "b"}')
+    assert doc.dumps() == '{"a":"b"}'
+    assert doc.as_obj == {'a': 'b'}
+
+    doc = Document({"a": "b"})
+    assert doc.dumps() == '{"a":"b"}'
+    assert doc.as_obj == {'a': 'b'}
+
+    with pytest.raises(TypeError) as exc:
+        Document({1: 'b'})
+    assert exc.value.args[0] == 'Dictionary keys must be strings'
+
+    with pytest.raises(TypeError) as exc:
+        Document({'\ud83d\ude47': 'foo'})
+    assert exc.value.args[0] == 'Dictionary keys must be strings'
 
 
 def test_document_get_pointer():
@@ -240,3 +342,151 @@ def test_document_freeze():
 
     doc.freeze()
     assert doc.is_thawed is False
+
+
+def test_document_size():
+    """
+    Test the size attribute that returns the size of data read from original JSON input.
+    """
+    # Test with immutable document (created from JSON string)
+    json_str = '{"hello": "world", "number": 42}'
+    doc = Document(json_str)
+    assert doc.bytes_read == len(json_str)
+
+    # Test with different sized JSON inputs
+    small_json = "{}"
+    doc_small = Document(small_json)
+    assert doc_small.bytes_read == len(small_json)
+
+    large_json = '{"users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}], "count": 2}'
+    doc_large = Document(large_json)
+    assert doc_large.bytes_read == len(large_json)
+
+    # Test with mutable document (created from Python object) - should return 0
+    doc_mutable = Document({"hello": "world"})
+    assert doc_mutable.bytes_read == 0
+
+
+def test_document_deeply_nested_raises():
+    """Deeply nested input must raise a catchable RecursionError rather than
+    overflowing the C stack, matching the stdlib json module."""
+    depth = 100_000
+
+    # Parsing succeeds (yyjson's reader is iterative); materializing to Python
+    # objects recurses and must raise instead of segfaulting.
+    doc = Document("[" * depth + "]" * depth)
+    with pytest.raises(RecursionError):
+        doc.as_obj
+
+    # Serializing a deeply nested Python object recurses on the way in.
+    nested = []
+    current = nested
+    for _ in range(depth):
+        child = []
+        current.append(child)
+        current = child
+    with pytest.raises(RecursionError):
+        Document(nested)
+
+
+class _NonBlockingReadinto:
+    """Simulates a non-blocking binary stream: chunks, then None forever."""
+
+    def __init__(self, *chunks):
+        self._chunks = list(chunks)
+
+    def readinto(self, buf):
+        if not self._chunks:
+            return None
+        chunk = self._chunks.pop(0)
+        buf[: len(chunk)] = chunk
+        return len(chunk)
+
+
+class _NonBlockingRead:
+    def __init__(self, *chunks):
+        self._chunks = list(chunks)
+
+    def read(self, n):
+        if not self._chunks:
+            return None
+        return self._chunks.pop(0)
+
+
+def test_stream_nonblocking_readinto_raises():
+    """None from readinto() means "no data yet", not EOF. Previously this
+    silently truncated: b'[1]' followed by None parsed as [1]."""
+    with pytest.raises(BlockingIOError):
+        Document(_NonBlockingReadinto(b"[1]"))
+    with pytest.raises(BlockingIOError):
+        Document(_NonBlockingReadinto())
+
+
+def test_stream_nonblocking_read_raises():
+    with pytest.raises(BlockingIOError):
+        Document(_NonBlockingRead(b'{"a": 1}'))
+    with pytest.raises(BlockingIOError):
+        Document(_NonBlockingRead())
+
+
+def test_thawed_conversion_parity():
+    """The thawed (mutable) conversion path shares one implementation with
+    the frozen path; all scalar types and containers round-trip."""
+    from decimal import Decimal
+
+    obj = {
+        "nums": [1, -2, 3.5, 2**80, Decimal("1.23")],
+        "nested": {"a": [True, False, None, "x"]},
+        "unicode": "café € 日本語",
+        "empty": {},
+        "repeated_keys": [{"id": i, "name": "n"} for i in range(100)],
+    }
+    doc = Document(obj)
+    assert doc.is_thawed
+    assert doc.as_obj == obj
+
+
+def test_thawed_deep_nesting_raises():
+    """Conversion depth is capped at 1024 for thawed documents too (it always
+    was for frozen ones)."""
+    deep = cur = []
+    for _ in range(1100):
+        nxt = []
+        cur.append(nxt)
+        cur = nxt
+    doc = Document(deep)
+    with pytest.raises(RecursionError):
+        doc.as_obj
+
+
+def test_freeze_thaw_chaining():
+    doc = Document({"a": 1})
+    assert doc.freeze() is doc
+    assert doc.is_thawed is False
+    assert doc.thaw() is doc
+    assert doc.is_thawed is True
+    # already in the target state: still returns self
+    assert doc.thaw() is doc
+    assert Document({"a": 1}).freeze().dumps() == '{"a":1}'
+
+
+def test_parse_errors_include_position():
+    """Parse errors report line/column/byte for in-memory and stream inputs,
+    and at least the byte offset for file paths."""
+    import io
+    from yyjson import loads
+
+    bad = '{\n  "a": 1,\n    bad\n}'
+    with pytest.raises(ValueError, match=r"at line 3, column \d+ \(byte \d+\)"):
+        Document(bad)
+    with pytest.raises(ValueError, match=r"at line 3, column \d+"):
+        loads(bad.encode())
+    with pytest.raises(ValueError, match=r"at line 3, column \d+"):
+        Document(io.BytesIO(bad.encode()))
+
+
+def test_parse_error_from_path_has_byte_offset(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_bytes(b'{"a": 1, bad}')
+    with pytest.raises(ValueError, match=r"at byte \d+"):
+        Document(p)

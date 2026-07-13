@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yyjson"
-version = "4.0.6"
+version = "5.0.0"
 description = "JSON parser & serializer built on yyjson"
 readme = "README.md"
 authors = [
@@ -22,11 +22,13 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
     "Operating System :: OS Independent",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+requires-python = ">=3.9"
 
 [project.urls]
 Homepage = "https://github.com/tktech/py_yyjson"
@@ -37,6 +39,7 @@ test = ["pytest"]
 release = [
     "sphinx",
     "sphinx-copybutton",
+    "myst-parser",
     "ghp-import",
     "bumpversion",
     "black",
@@ -45,7 +48,20 @@ release = [
 
 [tool.setuptools]
 ext-modules = [
-    { name = "cyyjson", sources = ["yyjson/binding.c", "yyjson/yyjson.c", "yyjson/memory.c", "yyjson/document.c"], py-limited-api = true}
+    { name = "cyyjson", sources = ["yyjson/binding.c", "yyjson/yyjson.c", "yyjson/memory.c", "yyjson/document.c", "yyjson/sax.c"] }
 ]
 packages = ["yyjson"]
 
+[tool.setuptools.package-data]
+yyjson = ["py.typed", "*.pyi"]
+
+[tool.cibuildwheel]
+enable = ["pypy"]
+test-requires = "pytest"
+test-command = "pytest {project}/tests"
+
+[tool.uv]
+cache-keys = [
+    { file = "yyjson/*.c" },
+    { file = "yyjson/*.h" }
+]
