@@ -41,9 +41,9 @@
 ### Changed
 
 - Major performance work on the read path - object-key caching, direct
-  document-tape walking, an ASCII fast path, presized containers, and pausing
-  the cyclic GC during conversion. `loads()` and `Document.as_obj` now beat or
-  match the fastest Python JSON libraries on most benchmarks.
+  document-tape walking, an ASCII fast path, and presized containers.
+  `loads()` and `Document.as_obj` are now competitive with the fastest
+  Python JSON libraries.
 - Parsing from file-like objects and `Path`s now reads into a single owned
   buffer parsed in place: roughly 20% faster with roughly 20% lower peak
   memory.

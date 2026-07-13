@@ -908,50 +908,14 @@ static PyObject *Document_from_json(
   return (PyObject *)self;
 }
 
-/*
- * Conversions run with the cyclic GC paused: the result is an acyclic tree,
- * so a collection mid-build can never free anything and only wastes time.
- * A depth counter makes pause/resume safe against overlap: conversions can
- * nest or interleave (a Decimal() call inside one can yield the GIL and run
- * another thread's conversion), so only the outermost pause snapshots and
- * toggles the GC state, and it is restored -- not force-enabled -- when the
- * last conversion finishes.
- */
-#if !defined(PYPY_VERSION) && PY_VERSION_HEX >= 0x030A0000
-static int gc_pause_depth = 0;
-static int gc_we_disabled = 0;
-
-static void gc_pause(void) {
-  if (gc_pause_depth++ == 0) {
-    gc_we_disabled = PyGC_IsEnabled();
-    if (gc_we_disabled) PyGC_Disable();
-  }
-}
-
-static void gc_resume(void) {
-  if (--gc_pause_depth == 0 && gc_we_disabled) {
-    PyGC_Enable();
-  }
-}
-#else
-#define gc_pause() ((void)0)
-#define gc_resume() ((void)0)
-#endif
-
 /**
- * Convert a document's root to Python objects with the cyclic GC paused for
- * the duration (see gc_pause above).
+ * Convert a document's root to Python objects.
  */
 static PyObject *doc_root_to_obj(DocumentObject *self) {
-  PyObject *result;
-  gc_pause();
   if (self->i_doc) {
-    result = element_to_primitive(yyjson_doc_get_root(self->i_doc), 0);
-  } else {
-    result = mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc), 0);
+    return element_to_primitive(yyjson_doc_get_root(self->i_doc), 0);
   }
-  gc_resume();
-  return result;
+  return mut_element_to_primitive(yyjson_mut_doc_get_root(self->m_doc), 0);
 }
 
 /**
@@ -984,11 +948,7 @@ static PyObject *py_loads(PyObject *module, PyObject *arg) {
     return NULL;
   }
 
-  /* Convert with the cyclic GC paused (acyclic tree; see gc_pause). */
-  gc_pause();
   result = element_to_primitive(yyjson_doc_get_root(doc), 0);
-  gc_resume();
-
   yyjson_doc_free(doc);
   return result;
 }
