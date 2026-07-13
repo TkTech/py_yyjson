@@ -21,6 +21,13 @@
   `list`, JSON text, or `Path`), wrapping it in a temporary `Document`.
 - `Document.bytes_read`: the number of input bytes consumed by the parse
   (useful with `ReaderFlags.STOP_WHEN_DONE`, e.g. for NDJSON).
+- `SAXHandler`, an optional base class for `sax()` handlers: subclass it and
+  override only the events you need, with IDE completion and static type
+  checking.
+- `sax()` accepts any object exporting a contiguous byte buffer
+  (`bytearray`, `memoryview`, `mmap`, ...) as a zero-copy source. The buffer
+  is pinned for the duration of the parse; resizing it from a handler
+  callback raises `BufferError`.
 - Type annotations: a `py.typed` marker and `.pyi` stubs for the C extension.
 - New `ReaderFlags`: `JSON5` (full JSON5 parsing), `ALLOW_BOM`, and the
   individual `ALLOW_EXT_NUMBER`, `ALLOW_EXT_ESCAPE`, `ALLOW_EXT_WHITESPACE`,
@@ -53,6 +60,18 @@
 - `Document.freeze()` and `Document.thaw()` return the document itself
   (previously `None`), allowing chaining such as
   `Document(obj).freeze().dumps()`.
+- `Document.patch()` no longer converts its patch argument between the
+  frozen and thawed representations in place; the argument comes back
+  exactly as it went in.
+- Opening a file that is missing or unreadable via `Document(Path)`,
+  `loads(Path)`, or `sax(Path)` raises `OSError` (e.g. `FileNotFoundError`)
+  carrying the filename, instead of a generic `ValueError`.
+- A non-blocking stream returning `None` from `read()`/`readinto()` ("no
+  data available yet") raises `BlockingIOError` instead of being treated as
+  end-of-input and silently truncating the document.
+- Converting thawed (mutable) documents to Python objects uses the same
+  optimized path as frozen documents; `patch()` results convert roughly 30%
+  faster and the 1024-level nesting limit now applies uniformly.
 - Wheels are no longer built against the limited API (required by the new
   ASCII fast path), and EOL PyPy 3.9/3.10 wheels are no longer produced.
 - The vendored yyjson was upgraded to 0.12.0.
@@ -65,3 +84,12 @@
 - A memory leak when serializing integers larger than 64 bits.
 - A memory leak when `Document.__init__()` was invoked more than once on the
   same object.
+- Non-ASCII file paths now work on Windows: `Document(Path)` and
+  `sax(Path)` open paths through the wide-character API instead of the ANSI
+  codepage.
+- A segfault when serializing a `Decimal` subclass whose `__str__` raises.
+- An allocation failure during `freeze()`/`thaw()` could destroy the
+  document's contents while reporting success; it now raises `MemoryError`
+  with the document intact. Other out-of-memory conditions during
+  serialization now raise `MemoryError` instead of silently dropping data
+  or raising `SystemError`.
